@@ -3,6 +3,19 @@ name = "how"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+description = "How was a command installed?"
+homepage = "https://github.com/George-Miao/how"
+repository = "https://github.com/George-Miao/how"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }.tar.gz"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.'cfg(windows)']
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }.zip"
+pkg-fmt = "zip"
 
 [dependencies]
 clap = { version = "4.6", features = ["color", "derive"] }

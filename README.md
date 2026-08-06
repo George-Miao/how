@@ -8,9 +8,23 @@ Configured installation roots are considered as well. Depending on the provider,
 
 ## Install
 
+The recommended option is [`cargo-binstall`](https://github.com/cargo-bins/cargo-binstall),
+which uses a prebuilt binary when one is available:
+
 ```console
-cargo install --path .
+cargo binstall how
 ```
+
+Alternatively, build and install the crate from crates.io with Cargo:
+
+```console
+cargo install how --locked
+```
+
+To install manually, download the archive for your platform from the
+[latest GitHub release](https://github.com/George-Miao/how/releases/latest),
+verify it against `SHA256SUMS`, extract `how` (`how.exe` on Windows), and move
+the binary into a directory on your `PATH`.
 
 ## Use
 
