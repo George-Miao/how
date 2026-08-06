@@ -16,6 +16,8 @@ Path conventions are the primary signal. Windows app execution aliases are recog
 
 Configured installation roots are considered as well. Depending on the provider, `how` reads documented environment variables and configuration files or caches a read-only query such as `pnpm bin --global`, `go env`, `uv tool dir`, or `pipx environment`.
 
+Configured aliases from bash, zsh, fish, Nushell, PowerShell, and tcsh/csh are expanded before `PATH` is searched, including aliases that add arguments or point to another alias.
+
 ## Install
 
 The recommended option is [`cargo-binstall`](https://github.com/cargo-bins/cargo-binstall),

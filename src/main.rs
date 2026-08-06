@@ -3,6 +3,7 @@ mod detect;
 mod error;
 mod provider;
 mod resolver;
+mod shell;
 mod util;
 
 use std::process::ExitCode;

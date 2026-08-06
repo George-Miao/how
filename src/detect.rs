@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::error::Error;
 use crate::provider::{self, Confidence, Detection, DetectionContext, Evidence, Mechanism};
-use crate::resolver;
+use crate::resolver::{self, Resolution};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Installation {
@@ -20,7 +20,8 @@ pub fn inspect(command: &OsStr, all: bool) -> Result<Vec<Installation>, Error> {
     resolver::resolve(command, all).map(|paths| paths.into_iter().map(inspect_path).collect())
 }
 
-fn inspect_path(executable: PathBuf) -> Installation {
+fn inspect_path(resolution: Resolution) -> Installation {
+    let executable = resolution.executable;
     let resolved = fs::canonicalize(&executable).unwrap_or_else(|_| executable.clone());
     let context = DetectionContext {
         executable: &executable,
@@ -41,6 +42,19 @@ fn inspect_path(executable: PathBuf) -> Installation {
     };
 
     let (detection, mut evidence) = select_detection(ownership, path_detection);
+    for alias in resolution.aliases.into_iter().rev() {
+        evidence.insert(
+            0,
+            Evidence {
+                kind: "shell alias",
+                detail: format!(
+                    "{} expands to {:?}",
+                    alias.name.to_string_lossy(),
+                    alias.value
+                ),
+            },
+        );
+    }
     if resolved != executable {
         evidence.push(Evidence {
             kind: "symlink",

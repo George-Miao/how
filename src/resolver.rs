@@ -1,12 +1,18 @@
 use std::collections::HashSet;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 use snafu::{OptionExt, ensure};
 
 use crate::error::{CommandNotFoundSnafu, Error, NotExecutableSnafu, PathNotSetSnafu};
+use crate::shell::{self, Expansion};
 
-pub fn resolve(command: &OsStr, all: bool) -> Result<Vec<PathBuf>, Error> {
+pub struct Resolution {
+    pub executable: PathBuf,
+    pub aliases: Vec<Expansion>,
+}
+
+pub fn resolve(command: &OsStr, all: bool) -> Result<Vec<Resolution>, Error> {
     let path = Path::new(command);
     if path.components().count() > 1 || path.is_absolute() {
         let resolved = explicit_candidates(path)
@@ -18,9 +24,25 @@ pub fn resolve(command: &OsStr, all: bool) -> Result<Vec<PathBuf>, Error> {
                 path: path.to_path_buf(),
             }
         );
-        return Ok(vec![resolved.expect("checked above")]);
+        return Ok(vec![Resolution {
+            executable: resolved.expect("checked above"),
+            aliases: Vec::new(),
+        }]);
     }
 
+    let (command, aliases) = shell::expand(command);
+    resolve_path(&command, all).map(|paths| {
+        paths
+            .into_iter()
+            .map(|executable| Resolution {
+                executable,
+                aliases: aliases.clone(),
+            })
+            .collect()
+    })
+}
+
+fn resolve_path(command: &OsString, all: bool) -> Result<Vec<PathBuf>, Error> {
     let path_variable = std::env::var_os("PATH").context(PathNotSetSnafu)?;
     let mut matches = Vec::new();
     let mut seen = HashSet::new();
@@ -38,7 +60,7 @@ pub fn resolve(command: &OsStr, all: bool) -> Result<Vec<PathBuf>, Error> {
     ensure!(
         !matches.is_empty(),
         CommandNotFoundSnafu {
-            command: command.to_os_string()
+            command: command.clone()
         }
     );
     Ok(matches)
