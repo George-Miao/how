@@ -33,6 +33,14 @@ Alternatively, build and install the crate from crates.io with Cargo:
 cargo install how --locked
 ```
 
+Or install the default package from this repository with Nix:
+
+```console
+nix profile install github:George-Miao/how
+```
+
+The flake supports `aarch64-darwin`, `aarch64-linux`, and `x86_64-linux`.
+
 To install manually, download the archive for your platform from the
 [latest GitHub release](https://github.com/George-Miao/how/releases/latest),
 verify it against `SHA256SUMS`, extract `how` (`how.exe` on Windows), and move
