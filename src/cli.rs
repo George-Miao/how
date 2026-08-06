@@ -21,7 +21,7 @@ const CLAP_STYLES: styling::Styles = styling::Styles::styled()
     version,
     color = ColorChoice::Auto,
     styles = CLAP_STYLES,
-    about = "How a command was installed?",
+    about = "How was a command installed?",
     after_help = "Examples:\n  how rg\n  how --all python\n  how --json /opt/homebrew/bin/rg"
 )]
 struct Cli {
@@ -68,8 +68,7 @@ fn render_human(installations: &[Installation]) -> String {
         if installation.executable != installation.resolved {
             let _ = writeln!(
                 output,
-                "  {} {}",
-                "→".if_supports_color(Stdout, |arrow| arrow.bright_black()),
+                "  → {}",
                 installation
                     .resolved
                     .display()
@@ -78,8 +77,7 @@ fn render_human(installations: &[Installation]) -> String {
         }
         let _ = writeln!(
             output,
-            "  {}{}",
-            "manager      ".if_supports_color(Stdout, |label| label.bright_black()),
+            "  manager      {}",
             installation.manager.if_supports_color(Stdout, |manager| {
                 Style::new().bright_green().bold().style(manager)
             })
@@ -87,13 +85,12 @@ fn render_human(installations: &[Installation]) -> String {
         if let Some(package) = &installation.package {
             let _ = writeln!(
                 output,
-                "  {}{}",
-                "package      ".if_supports_color(Stdout, |label| label.bright_black()),
+                "  package      {}",
                 package.if_supports_color(Stdout, |package| package.bright_magenta())
             );
         }
 
-        let confidence = installation.confidence.to_string();
+        let confidence = installation.confidence.as_str();
         let confidence_style = match installation.confidence {
             crate::provider::Confidence::High => Style::new().bright_green().bold(),
             crate::provider::Confidence::Medium => Style::new().bright_yellow().bold(),
@@ -101,27 +98,24 @@ fn render_human(installations: &[Installation]) -> String {
         };
         let _ = writeln!(
             output,
-            "  {}{}",
-            "confidence   ".if_supports_color(Stdout, |label| label.bright_black()),
+            "  confidence   {}",
             confidence.if_supports_color(Stdout, |value| value.style(confidence_style))
         );
 
         let _ = writeln!(
             output,
             "  {}",
-            "evidence".if_supports_color(Stdout, |label| {
-                Style::new().bright_black().bold().style(label)
-            })
+            "evidence".if_supports_color(Stdout, |label| { label.bold() })
         );
         for evidence in &installation.evidence {
             let _ = writeln!(
                 output,
-                "    {} {} {}",
-                "•".if_supports_color(Stdout, |bullet| bullet.bright_black()),
+                "    • {}: {}",
                 evidence
                     .kind
                     .if_supports_color(Stdout, |kind| kind.bright_yellow()),
-                format_args!("— {}", evidence.detail)
+                evidence
+                    .detail
                     .if_supports_color(Stdout, |detail| detail.dimmed())
             );
         }

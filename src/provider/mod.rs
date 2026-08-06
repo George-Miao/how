@@ -30,7 +30,6 @@ mod winget;
 mod yarn;
 
 use std::borrow::Cow;
-use std::fmt;
 use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,12 +54,6 @@ impl Confidence {
             Self::Medium => 2,
             Self::Low => 1,
         }
-    }
-}
-
-impl fmt::Display for Confidence {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{} confidence", self.as_str())
     }
 }
 
