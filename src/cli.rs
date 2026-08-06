@@ -1,15 +1,26 @@
 use std::ffi::OsString;
 use std::fmt::Write;
 
-use clap::Parser;
+use clap::builder::styling;
+use clap::{ColorChoice, Parser};
+use owo_colors::Stream::Stdout;
+use owo_colors::{OwoColorize, Style};
 
 use crate::detect::{self, Installation};
 use crate::error::Error;
+
+const CLAP_STYLES: styling::Styles = styling::Styles::styled()
+    .header(styling::AnsiColor::Cyan.on_default().bold())
+    .usage(styling::AnsiColor::Cyan.on_default().bold())
+    .literal(styling::AnsiColor::Green.on_default().bold())
+    .placeholder(styling::AnsiColor::BrightCyan.on_default());
 
 #[derive(Debug, Parser, PartialEq, Eq)]
 #[command(
     name = "how",
     version,
+    color = ColorChoice::Auto,
+    styles = CLAP_STYLES,
     about = "How a command was installed?",
     after_help = "Examples:\n  how rg\n  how --all python\n  how --json /opt/homebrew/bin/rg"
 )]
@@ -44,23 +55,74 @@ fn render_human(installations: &[Installation]) -> String {
         if index > 0 {
             output.push('\n');
         }
-        let _ = writeln!(output, "{}", installation.executable.display());
+        let _ = writeln!(
+            output,
+            "{}",
+            installation
+                .executable
+                .display()
+                .if_supports_color(Stdout, |path| {
+                    Style::new().bright_cyan().bold().style(path)
+                })
+        );
         if installation.executable != installation.resolved {
-            let _ = writeln!(output, "  resolves to  {}", installation.resolved.display());
+            let _ = writeln!(
+                output,
+                "  {} {}",
+                "→".if_supports_color(Stdout, |arrow| arrow.bright_black()),
+                installation
+                    .resolved
+                    .display()
+                    .if_supports_color(Stdout, |path| path.cyan())
+            );
         }
         let _ = writeln!(
             output,
-            "  installed by {} ({})",
-            installation.manager, installation.confidence
+            "  {}{}",
+            "manager      ".if_supports_color(Stdout, |label| label.bright_black()),
+            installation.manager.if_supports_color(Stdout, |manager| {
+                Style::new().bright_green().bold().style(manager)
+            })
         );
         if let Some(package) = &installation.package {
-            let _ = writeln!(output, "  package      {package}");
+            let _ = writeln!(
+                output,
+                "  {}{}",
+                "package      ".if_supports_color(Stdout, |label| label.bright_black()),
+                package.if_supports_color(Stdout, |package| package.bright_magenta())
+            );
         }
+
+        let confidence = installation.confidence.to_string();
+        let confidence_style = match installation.confidence {
+            crate::provider::Confidence::High => Style::new().bright_green().bold(),
+            crate::provider::Confidence::Medium => Style::new().bright_yellow().bold(),
+            crate::provider::Confidence::Low => Style::new().bright_red().bold(),
+        };
+        let _ = writeln!(
+            output,
+            "  {}{}",
+            "confidence   ".if_supports_color(Stdout, |label| label.bright_black()),
+            confidence.if_supports_color(Stdout, |value| value.style(confidence_style))
+        );
+
+        let _ = writeln!(
+            output,
+            "  {}",
+            "evidence".if_supports_color(Stdout, |label| {
+                Style::new().bright_black().bold().style(label)
+            })
+        );
         for evidence in &installation.evidence {
             let _ = writeln!(
                 output,
-                "  evidence     {}: {}",
-                evidence.kind, evidence.detail
+                "    {} {} {}",
+                "•".if_supports_color(Stdout, |bullet| bullet.bright_black()),
+                evidence
+                    .kind
+                    .if_supports_color(Stdout, |kind| kind.bright_yellow()),
+                format_args!("— {}", evidence.detail)
+                    .if_supports_color(Stdout, |detail| detail.dimmed())
             );
         }
     }
@@ -125,6 +187,8 @@ fn push_json_string(output: &mut String, value: &str) {
 mod tests {
     use std::path::PathBuf;
 
+    use clap::CommandFactory;
+
     use super::*;
     use crate::provider::{Confidence, Evidence};
 
@@ -139,6 +203,16 @@ mod tests {
                 json: true,
             }
         );
+    }
+
+    #[test]
+    fn clap_help_has_color_when_enabled() {
+        let help = Cli::command()
+            .color(ColorChoice::Always)
+            .render_help()
+            .ansi()
+            .to_string();
+        assert!(help.contains("\u{1b}["));
     }
 
     #[test]

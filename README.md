@@ -26,12 +26,17 @@ cargo install --path .
 ```console
 $ how rg
 /opt/homebrew/bin/rg
-  resolves to  /opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg
-  installed by Homebrew (high confidence)
+  → /opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg
+  manager      Homebrew
   package      ripgrep
-  evidence     path convention: target lives in a Homebrew Cellar
-  evidence     symlink: target is /opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg
+  confidence   high confidence
+  evidence
+    • path convention — target lives in a Homebrew Cellar
+    • symlink — target is /opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg
 ```
+
+Help and human-readable results use color when their output stream supports it.
+Redirected output and JSON remain unstyled.
 
 Inspect shadowed commands too:
 
