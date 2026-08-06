@@ -127,7 +127,7 @@ pub fn child_after(path: &Path, root: &Path, child: &str) -> Option<String> {
 
 pub fn query_ownership(
     context: &DetectionContext<'_>,
-    program: &str,
+    program: impl AsRef<OsStr>,
     arguments: &[&str],
     manager: &'static str,
     parser: fn(&str) -> Option<String>,

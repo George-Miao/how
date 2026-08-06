@@ -105,3 +105,22 @@ fn select_detection(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    #[test]
+    fn detects_msys2_clang64_executable_by_path() {
+        let executable = Path::new("D:/msys64/clang64/bin/rg.exe");
+        let context = DetectionContext {
+            executable,
+            resolved: executable,
+        };
+
+        let detection = best_path_detection(&context).expect("MSYS2 detection");
+        assert_eq!(detection.manager, "MSYS2 pacman");
+    }
+}

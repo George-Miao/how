@@ -12,6 +12,7 @@ mod go;
 mod homebrew;
 mod macports;
 mod mise;
+mod msys2;
 mod nix;
 mod npm;
 mod pacman;
@@ -162,6 +163,7 @@ static PATH_PROVIDERS: &[&dyn Provider] = &[
     &composer::PROVIDER,
     &cargo::PROVIDER,
     &go::PROVIDER,
+    &msys2::PROVIDER,
     &winget::PROVIDER,
     &scoop::PROVIDER,
     &chocolatey::PROVIDER,
