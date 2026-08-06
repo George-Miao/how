@@ -1,0 +1,9 @@
+[package]
+name = "how"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+
+[dependencies]
+clap = { version = "4.6", features = ["derive"] }
+snafu = "0.9"
