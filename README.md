@@ -1,5 +1,15 @@
 # how
 
+[![github]](https://github.com/George-Miao/how)
+[![crates.io]](https://crates.io/crates/how)
+[![docs.rs]](https://docs.rs/how)
+[![build status]](https://github.com/George-Miao/how/actions?query=branch%3Amain)
+
+[github]: https://img.shields.io/badge/github-George--Miao/how-8da0cb?labelColor=555555&logo=github&style=for-the-badge
+[crates.io]: https://img.shields.io/crates/v/how.svg?color=fc8d62&logo=rust&style=for-the-badge
+[docs.rs]: https://img.shields.io/badge/docs.rs-how-66c2a5?labelColor=555555&logo=docs.rs&style=for-the-badge
+[build status]: https://img.shields.io/github/actions/workflow/status/George-Miao/how/ci.yml?branch=main&style=for-the-badge
+
 `how` explains where a command came from: which executable your shell finds, what it resolves to, and which package manager most likely installed it.
 
 Path conventions are the primary signal. Windows app execution aliases are recognized too. For executables in system directories, `how` also asks an available package database (`dpkg`, RPM, pacman, apk, or FreeBSD pkg) which package owns the file.
@@ -34,10 +44,10 @@ $ how rg
   → /opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg
   manager      Homebrew
   package      ripgrep
-  confidence   high confidence
+  confidence   high
   evidence
-    • path convention — target lives in a Homebrew Cellar
-    • symlink — target is /opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg
+    • path convention: target lives in a Homebrew Cellar
+    • symlink: target is /opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg
 ```
 
 Help and human-readable results use color when their output stream supports it.
