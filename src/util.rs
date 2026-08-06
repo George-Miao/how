@@ -81,14 +81,15 @@ pub fn relative_to(path: &Path, root: &Path) -> Option<PathBuf> {
         windows => {
             let path_components: Vec<_> = path.components().collect();
             let root_components: Vec<_> = root.components().collect();
-            let starts_with_root = path_components
-                .iter()
-                .zip(&root_components)
-                .all(|(left, right)| {
-                    left.as_os_str()
-                        .to_string_lossy()
-                        .eq_ignore_ascii_case(&right.as_os_str().to_string_lossy())
-                });
+            let starts_with_root =
+                path_components
+                    .iter()
+                    .zip(&root_components)
+                    .all(|(left, right)| {
+                        left.as_os_str()
+                            .to_string_lossy()
+                            .eq_ignore_ascii_case(&right.as_os_str().to_string_lossy())
+                    });
             (starts_with_root && path_components.len() >= root_components.len()).then(|| {
                 path_components[root_components.len()..]
                     .iter()

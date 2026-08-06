@@ -86,14 +86,10 @@ fn default_home() -> Option<PathBuf> {
         target_os = "macos" => {
             util::home_dir().map(|home| home.join("Library/Application Support/pipx"))
         }
-        windows => {
-            util::env_path("LOCALAPPDATA").map(|home| home.join("pipx"))
-        }
-        _ => {
-            util::env_path("XDG_DATA_HOME")
-                .map(|path| path.join("pipx"))
-                .or_else(|| util::home_dir().map(|home| home.join(".local/share/pipx")))
-        }
+        windows => util::env_path("LOCALAPPDATA").map(|home| home.join("pipx")),
+        _ => util::env_path("XDG_DATA_HOME")
+            .map(|path| path.join("pipx"))
+            .or_else(|| util::home_dir().map(|home| home.join(".local/share/pipx"))),
     }
 }
 
