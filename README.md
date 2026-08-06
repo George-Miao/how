@@ -74,3 +74,55 @@ Produce stable, machine-readable output:
 ```console
 how --json rg
 ```
+
+## Supported detection
+
+Every path provider checks both the executable found on `PATH` and its resolved
+symlink target. "Default" below means the package manager's conventional
+per-user location. Environment variables and read-only command queries are used
+only to discover paths; `how` does not change package-manager configuration.
+
+| Provider | Typical systems | How it is detected | Configured path support |
+| --- | --- | --- | --- |
+| Nix | Linux, macOS | Store path such as `/nix/store/<hash>-<package>/...` | `NIX_STORE_DIR` |
+| Homebrew | macOS, Linux | Formula beneath a Homebrew `Cellar` | `HOMEBREW_CELLAR`; otherwise `brew --cellar` |
+| Snap | Linux | `/snap/bin` exposure or a mounted `/snap/<package>/...` path | — (path convention) |
+| Flatpak | Linux | A `flatpak/exports/bin` path | — (path convention) |
+| MacPorts | macOS | `/opt/local/...` prefix | — (fixed prefix) |
+| mise | Cross-platform | Tool installs or shims beneath the mise data directory | `MISE_DATA_DIR`, `XDG_DATA_HOME`, or default |
+| asdf | Unix-like | Tool installs or shims beneath the asdf data directory | `ASDF_DATA_DIR` or default |
+| pyenv | Unix-like | Python versions or shims beneath the pyenv root | `PYENV_ROOT`; otherwise `pyenv root` or default |
+| rbenv | Unix-like | Ruby versions or shims beneath the rbenv root | `RBENV_ROOT`; otherwise `rbenv root` or default |
+| Volta | Cross-platform | Package images or shims beneath the Volta home | `VOLTA_HOME` or default |
+| uv | Cross-platform | Installed tool directory or an explicitly configured tool bin directory | `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR`, `uv tool dir`, `XDG_DATA_HOME`, or default |
+| pipx | Cross-platform | Managed virtual environments or explicitly configured bin directories | `PIPX_HOME`, `PIPX_GLOBAL_HOME`, `PIPX_BIN_DIR`, `PIPX_GLOBAL_BIN_DIR`, `pipx environment`, or platform defaults |
+| pnpm | Cross-platform | `.pnpm` virtual-store layout or a global bin directory | `PNPM_HOME`; otherwise `pnpm bin --global` or default |
+| npm | Cross-platform | `node_modules` layout or the global prefix's `bin` directory | `NPM_CONFIG_PREFIX`; otherwise `npm prefix --global` |
+| Yarn | Cross-platform | A path containing a `.yarn` managed directory | — (path convention) |
+| Bun | Cross-platform | `bin` beneath the Bun install root | `BUN_INSTALL` or default |
+| Deno | Cross-platform | `bin` beneath the Deno install root | `DENO_INSTALL_ROOT` or default |
+| Composer | Cross-platform | `vendor/bin` beneath Composer home | `COMPOSER_HOME` or default |
+| Cargo | Cross-platform | `bin` beneath the Cargo install root | `CARGO_INSTALL_ROOT`, `CARGO_HOME`, or `install.root` in Cargo config; otherwise default |
+| Go | Cross-platform | A Go install `bin` directory | `GOBIN`, `GOPATH`, `go env GOBIN`, `go env GOPATH`, or default |
+| MSYS2 pacman | Windows | MSYS/UCRT/CLANG/MinGW prefix layout; then `pacman -Qqo` when available | Root is inferred from the executable, including non-default drives and directories |
+| WinGet | Windows | Portable-package roots or the WinGet links directory | Locations derived from `LOCALAPPDATA` and `PROGRAMFILES` |
+| Scoop | Windows | Apps or shims beneath Scoop roots | `SCOOP`, `SCOOP_GLOBAL`, `PROGRAMDATA`, or default |
+| Chocolatey | Windows | Packages or shims beneath the Chocolatey root | `ChocolateyInstall`, `PROGRAMDATA`, or default |
+| Microsoft Store / App Installer | Windows | App execution alias in `Microsoft/WindowsApps` | Location derived from `LOCALAPPDATA` |
+| System fallback | Unix-like | `/usr/bin`, `/usr/sbin`, `/bin`, or `/sbin` | — (fixed prefixes; low-confidence fallback) |
+
+When no high-confidence path convention matches, `how` asks each available
+native package database about the exact resolved executable:
+
+| Package database | Typical systems | Ownership query |
+| --- | --- | --- |
+| dpkg | Debian, Ubuntu, and derivatives | `dpkg-query -S <path>` |
+| RPM | Fedora, RHEL, openSUSE, and derivatives | `rpm -qf <path>` |
+| pacman | Arch Linux and derivatives | `pacman -Qqo <path>` |
+| apk | Alpine Linux | `apk info --who-owns <path>` |
+| FreeBSD pkg | FreeBSD | `pkg which -q <path>` |
+
+Shell aliases are supported for zsh, bash, fish, Nushell (`nu`), PowerShell
+(`pwsh` and Windows PowerShell), and tcsh/csh. The active shell is selected from
+`SHELL`, alias chains are followed, and only the aliased command target—not its
+arguments—is resolved.
