@@ -89,6 +89,8 @@ only to discover paths; `how` does not change package-manager configuration.
 | Snap | Linux | `/snap/bin` exposure or a mounted `/snap/<package>/...` path | — (path convention) |
 | Flatpak | Linux | A `flatpak/exports/bin` path | — (path convention) |
 | MacPorts | macOS | `/opt/local/...` prefix | — (fixed prefix) |
+| Pixi | Cross-platform | Workspace or global environments, plus executables exposed from Pixi home | `PIXI_HOME` or default |
+| Conda-compatible | Cross-platform | A prefix containing `conda-meta` (Conda, Mamba, or Micromamba) | Prefix metadata supports named and custom environments |
 | mise | Cross-platform | Tool installs or shims beneath the mise data directory | `MISE_DATA_DIR`, `XDG_DATA_HOME`, or default |
 | asdf | Unix-like | Tool installs or shims beneath the asdf data directory | `ASDF_DATA_DIR` or default |
 | pyenv | Unix-like | Python versions or shims beneath the pyenv root | `PYENV_ROOT`; otherwise `pyenv root` or default |

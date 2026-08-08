@@ -4,6 +4,7 @@ mod bun;
 mod cargo;
 mod chocolatey;
 mod composer;
+mod conda;
 mod deno;
 mod dpkg;
 mod flatpak;
@@ -17,6 +18,7 @@ mod nix;
 mod npm;
 mod pacman;
 mod pipx;
+mod pixi;
 mod pnpm;
 mod pyenv;
 mod rbenv;
@@ -113,6 +115,21 @@ impl Detection {
             detail: detail.into(),
         }
     }
+
+    pub(super) fn inspection(
+        manager: &'static str,
+        package: Option<String>,
+        confidence: Confidence,
+        detail: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        Self {
+            manager,
+            package,
+            confidence,
+            mechanism: Mechanism::Inspection,
+            detail: detail.into(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -148,6 +165,8 @@ static PATH_PROVIDERS: &[&dyn Provider] = &[
     &homebrew::PROVIDER,
     &snap::PROVIDER,
     &flatpak::PROVIDER,
+    &pixi::PROVIDER,
+    &conda::PROVIDER,
     &mise::PROVIDER,
     &asdf::PROVIDER,
     &pyenv::PROVIDER,
