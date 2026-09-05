@@ -1,8 +1,8 @@
 use std::ffi::OsStr;
 
-use super::{CommandProbe, Shell, query_output};
+use super::{CommandProbe, Shell, framed_value, query_output};
 
-const QUERY: &str = "alias \"$HOW_ALIAS_COMMAND\"";
+const QUERY: &str = "printf '\\0'; alias \"$HOW_ALIAS_COMMAND\"; printf '\\0'";
 
 pub(super) struct Tcsh;
 pub(super) static SHELL: Tcsh = Tcsh;
@@ -19,11 +19,7 @@ impl Shell for Tcsh {
 }
 
 fn parse(output: &[u8]) -> Option<String> {
-    let value = String::from_utf8_lossy(output)
-        .lines()
-        .next_back()?
-        .trim()
-        .to_owned();
+    let value = framed_value(output)?.trim().to_owned();
     (!value.is_empty()).then_some(value)
 }
 
@@ -32,7 +28,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn uses_last_line_after_startup_output() {
-        assert_eq!(parse(b"startup\nls -la\n"), Some("ls -la".into()));
+    fn reads_alias_inside_profile_noise() {
+        assert_eq!(
+            parse(b"profile banner\n\0ls -la\n\0prompt text\n"),
+            Some("ls -la".into())
+        );
     }
 }

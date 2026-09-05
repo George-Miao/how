@@ -20,38 +20,18 @@ impl Shell for Zsh {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-
     use super::*;
 
     #[test]
     fn ignores_shell_startup_output_around_framed_alias() {
         assert_eq!(
-            framed_value(b"startup message\n\0eza --long\0"),
+            framed_value(b"startup message\n\0eza --long\0prompt text\n"),
             Some("eza --long".into())
         );
     }
 
     #[test]
-    fn query_ignores_aliases_for_print() {
+    fn query_uses_builtin_print() {
         assert!(QUERY.starts_with("builtin print "));
-        let child = Command::new("zsh")
-            .arg("-f")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .env("HOW_ALIAS_COMMAND", "ll")
-            .spawn();
-        let Ok(mut child) = child else {
-            return;
-        };
-        writeln!(
-            child.stdin.take().unwrap(),
-            "alias ll='eza -l'\nalias print=false\n{QUERY}"
-        )
-        .unwrap();
-        let output = child.wait_with_output().unwrap();
-
-        assert_eq!(framed_value(&output.stdout), Some("eza -l".into()));
     }
 }

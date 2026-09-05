@@ -14,4 +14,16 @@ pub enum Error {
 
     #[snafu(display("command {command:?} was not found in PATH"))]
     CommandNotFound { command: OsString },
+
+    #[snafu(display(
+        "unsupported shell {shell:?}; supported shells: bash, zsh, fish, nu, pwsh, powershell, \
+         tcsh, csh"
+    ))]
+    UnsupportedShell { shell: OsString },
+
+    #[snafu(display("shell path {} is not an executable file", path.display()))]
+    InvalidShellPath { path: PathBuf },
+
+    #[snafu(display("shell {shell:?} could not be executed"))]
+    ShellUnavailable { shell: OsString },
 }

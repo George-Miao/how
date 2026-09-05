@@ -51,8 +51,13 @@ pub struct CandidateExplanation {
     pub reason: String,
 }
 
-pub fn inspect(command: &OsStr, all: bool, explain: bool) -> Result<Vec<Installation>, Error> {
-    resolver::resolve(command, all).map(|paths| {
+pub fn inspect(
+    command: &OsStr,
+    all: bool,
+    explain: bool,
+    aliases: &crate::shell::AliasResolution,
+) -> Result<Vec<Installation>, Error> {
+    resolver::resolve(command, all, aliases).map(|paths| {
         paths
             .into_iter()
             .map(|resolution| inspect_path(resolution, explain))

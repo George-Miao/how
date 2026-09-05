@@ -2,11 +2,12 @@ use std::env;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 
-use super::{CommandProbe, CommandSpec, Shell};
+use super::{CommandProbe, CommandSpec, Shell, framed_value};
 use crate::util;
 
-const QUERY: &str = "scope aliases | where name == $env.HOW_ALIAS_COMMAND | get -o 0.expansion | \
-                     default '' | print -n";
+const QUERY: &str = "let value = (scope aliases | where name == $env.HOW_ALIAS_COMMAND | get -o \
+                     0.expansion | default ''); print -n (char nul); print -n $value; print -n \
+                     (char nul)";
 
 pub(super) struct Nushell;
 pub(super) static SHELL: Nushell = Nushell;
@@ -28,8 +29,7 @@ impl Shell for Nushell {
                 ])
                 .env("HOW_ALIAS_COMMAND", command),
         )?;
-        let value = String::from_utf8_lossy(&output).trim().to_owned();
-        (!value.is_empty()).then_some(value)
+        framed_value(&output)
     }
 }
 
@@ -51,4 +51,17 @@ fn config_file() -> Option<PathBuf> {
         .chain(macos)
         .chain(conventional)
         .find(|path| path.is_file())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_alias_inside_profile_noise() {
+        assert_eq!(
+            framed_value(b"profile banner\n\0eza --long\0prompt text\n"),
+            Some("eza --long".into())
+        );
+    }
 }

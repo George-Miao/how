@@ -22,6 +22,10 @@ impl Shell for PowerShell {
         )?;
         framed_value(&output)
     }
+
+    fn validation_arguments(&self) -> &'static [&'static str] {
+        &["-NoLogo", "-NonInteractive", "-Command", "exit 0"]
+    }
 }
 
 #[cfg(test)]

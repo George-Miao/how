@@ -70,6 +70,20 @@ Inspect shadowed commands too:
 how --all python
 ```
 
+Choose a supported shell explicitly when `SHELL` does not identify the shell
+whose aliases should be inspected:
+
+```console
+how --shell /bin/zsh ll
+how --shell pwsh gci
+```
+
+Disable alias expansion for a direct `PATH` lookup:
+
+```console
+how --no-aliases ll
+```
+
 Produce stable, machine-readable output:
 
 ```console
@@ -175,6 +189,14 @@ native package database about the exact resolved executable:
 | FreeBSD pkg | FreeBSD | `pkg which -q <path>` |
 
 Shell aliases are supported for zsh, bash, fish, Nushell (`nu`), PowerShell
-(`pwsh` and Windows PowerShell), and tcsh/csh. The active shell is selected from
-`SHELL`, alias chains are followed, and only the aliased command target—not its
-arguments—is resolved.
+(`pwsh` and Windows PowerShell), and tcsh/csh. By default, `how` uses the shell
+named by `SHELL`; alias chains are followed, safe `env` and `command` wrappers
+are unwrapped, and only the aliased command target—not its arguments—is
+resolved. Use `--shell <program-or-path>` to select a supported shell explicitly
+or `--no-aliases` to skip alias queries.
+
+On Windows, `SHELL` is still the only automatic shell signal. When it is absent,
+alias resolution is skipped rather than assuming PowerShell, because the
+current process may have been launched from Command Prompt, PowerShell, or a
+Unix-compatible environment. Pass `--shell pwsh` or `--shell powershell` when
+PowerShell alias resolution is desired.
