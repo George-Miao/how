@@ -1,4 +1,5 @@
 mod cli;
+mod command_probe;
 mod detect;
 mod error;
 mod provider;

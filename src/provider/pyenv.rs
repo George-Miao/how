@@ -1,21 +1,22 @@
-use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::path::Path;
 
 use super::{Confidence, Detection, DetectionContext, Provider};
 use crate::util::{self, detect_paths, executable_name};
 
 pub(super) struct Pyenv;
 pub(super) static PROVIDER: Pyenv = Pyenv;
-static ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
 
 impl Provider for Pyenv {
     fn detect(&self, context: &DetectionContext<'_>) -> Option<Detection> {
-        detect_paths(context, detect_path)
+        let root = util::env_path("PYENV_ROOT")
+            .or_else(|| util::home_dir().map(|path| path.join(".pyenv")))?;
+        detect_paths(context, |path| detect_under_root(path, &root))
     }
-}
 
-fn detect_path(path: &Path) -> Option<Detection> {
-    detect_under_root(path, root()?)
+    fn discover(&self, context: &DetectionContext<'_>) -> Option<Detection> {
+        let root = util::command_path(context.probe, "pyenv", &["root"])?;
+        detect_paths(context, |path| detect_under_root(path, &root))
+    }
 }
 
 fn detect_under_root(path: &Path, root: &Path) -> Option<Detection> {
@@ -35,15 +36,6 @@ fn detect_under_root(path: &Path, root: &Path) -> Option<Detection> {
             format!("executable is a shim under pyenv root {}", root.display()),
         )
     })
-}
-
-fn root() -> Option<&'static PathBuf> {
-    ROOT.get_or_init(|| {
-        util::env_path("PYENV_ROOT")
-            .or_else(|| util::command_path("pyenv", &["root"]))
-            .or_else(|| util::home_dir().map(|path| path.join(".pyenv")))
-    })
-    .as_ref()
 }
 
 #[cfg(test)]

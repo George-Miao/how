@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 
-use super::{Shell, framed_value, query_output};
+use super::{CommandProbe, Shell, framed_value, query_output};
 
 const QUERY: &str = "builtin print -rn -- $'\\0'${aliases[$HOW_ALIAS_COMMAND]-}$'\\0'";
 
@@ -12,8 +12,8 @@ impl Shell for Zsh {
         &["zsh"]
     }
 
-    fn query(&self, program: &OsStr, command: &OsStr) -> Option<String> {
-        let output = query_output(program, command, QUERY)?;
+    fn query(&self, probe: &dyn CommandProbe, program: &OsStr, command: &OsStr) -> Option<String> {
+        let output = query_output(probe, program, command, QUERY)?;
         framed_value(&output)
     }
 }

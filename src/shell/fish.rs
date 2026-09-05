@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 
-use super::{Shell, query_output, shell_words};
+use super::{CommandProbe, Shell, query_output, shell_words};
 
 const QUERY: &str = "alias";
 
@@ -12,8 +12,8 @@ impl Shell for Fish {
         &["fish"]
     }
 
-    fn query(&self, program: &OsStr, command: &OsStr) -> Option<String> {
-        let output = query_output(program, command, QUERY)?;
+    fn query(&self, probe: &dyn CommandProbe, program: &OsStr, command: &OsStr) -> Option<String> {
+        let output = query_output(probe, program, command, QUERY)?;
         parse(&output, command)
     }
 }

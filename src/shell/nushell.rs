@@ -1,9 +1,8 @@
 use std::env;
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::process::Command;
 
-use super::Shell;
+use super::{CommandProbe, CommandSpec, Shell};
 use crate::util;
 
 const QUERY: &str = "scope aliases | where name == $env.HOW_ALIAS_COMMAND | get -o 0.expansion | \
@@ -17,19 +16,19 @@ impl Shell for Nushell {
         &["nu"]
     }
 
-    fn query(&self, program: &OsStr, command: &OsStr) -> Option<String> {
+    fn query(&self, probe: &dyn CommandProbe, program: &OsStr, command: &OsStr) -> Option<String> {
         let config = config_file()?;
-        let output = Command::new(program)
-            .args([
-                OsStr::new("--config"),
-                config.as_os_str(),
-                OsStr::new("-c"),
-                OsStr::new(QUERY),
-            ])
-            .env("HOW_ALIAS_COMMAND", command)
-            .output()
-            .ok()?;
-        let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        let output = probe.output(
+            CommandSpec::new(program)
+                .args([
+                    OsStr::new("--config"),
+                    config.as_os_str(),
+                    OsStr::new("-c"),
+                    OsStr::new(QUERY),
+                ])
+                .env("HOW_ALIAS_COMMAND", command),
+        )?;
+        let value = String::from_utf8_lossy(&output).trim().to_owned();
         (!value.is_empty()).then_some(value)
     }
 }

@@ -1,8 +1,8 @@
 use std::env;
 use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
 
+use crate::command_probe::{CommandProbe, CommandSpec};
 use crate::provider::{Detection, DetectionContext};
 
 pub fn detect_paths(
@@ -101,16 +101,21 @@ pub fn relative_to(path: &Path, root: &Path) -> Option<PathBuf> {
     }
 }
 
-pub fn command_path(program: &str, arguments: &[&str]) -> Option<PathBuf> {
-    command_output(program, arguments).map(PathBuf::from)
+pub fn command_path(
+    probe: &dyn CommandProbe,
+    program: &str,
+    arguments: &[&str],
+) -> Option<PathBuf> {
+    command_output(probe, program, arguments).map(PathBuf::from)
 }
 
-pub fn command_output(program: &str, arguments: &[&str]) -> Option<String> {
-    let output = Command::new(program).args(arguments).output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+pub fn command_output(
+    probe: &dyn CommandProbe,
+    program: &str,
+    arguments: &[&str],
+) -> Option<String> {
+    let output = probe.output(CommandSpec::new(program).args(arguments))?;
+    let value = String::from_utf8_lossy(&output).trim().to_owned();
     (!value.is_empty()).then_some(value)
 }
 
@@ -132,15 +137,12 @@ pub fn query_ownership(
     manager: &'static str,
     parser: fn(&str) -> Option<String>,
 ) -> Option<Detection> {
-    let output = Command::new(program)
-        .args(arguments)
-        .arg(context.resolved)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let output = context.probe.output(
+        CommandSpec::new(program)
+            .args(arguments)
+            .arg(context.resolved),
+    )?;
+    let stdout = String::from_utf8_lossy(&output);
     let package = parser(stdout.trim())?;
     Some(Detection::ownership(
         manager,

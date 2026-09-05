@@ -1,7 +1,6 @@
 use std::ffi::OsStr;
-use std::process::Command;
 
-use super::{Shell, framed_value};
+use super::{CommandProbe, CommandSpec, Shell, framed_value};
 
 const QUERY: &str = "$a = Microsoft.PowerShell.Utility\\Get-Alias -Name $env:HOW_ALIAS_COMMAND \
                      -ErrorAction SilentlyContinue; if ($null -ne $a) { \
@@ -15,13 +14,13 @@ impl Shell for PowerShell {
         &["pwsh", "powershell"]
     }
 
-    fn query(&self, program: &OsStr, command: &OsStr) -> Option<String> {
-        let output = Command::new(program)
-            .args(["-NoLogo", "-NonInteractive", "-Command", QUERY])
-            .env("HOW_ALIAS_COMMAND", command)
-            .output()
-            .ok()?;
-        framed_value(&output.stdout)
+    fn query(&self, probe: &dyn CommandProbe, program: &OsStr, command: &OsStr) -> Option<String> {
+        let output = probe.output(
+            CommandSpec::new(program)
+                .args(["-NoLogo", "-NonInteractive", "-Command", QUERY])
+                .env("HOW_ALIAS_COMMAND", command),
+        )?;
+        framed_value(&output)
     }
 }
 

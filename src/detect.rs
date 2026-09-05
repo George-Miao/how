@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::PathBuf;
 
+use crate::command_probe;
 use crate::error::Error;
 use crate::provider::{self, Confidence, Detection, DetectionContext, Evidence, Mechanism};
 use crate::resolver::{self, Resolution};
@@ -26,6 +27,7 @@ fn inspect_path(resolution: Resolution) -> Installation {
     let context = DetectionContext {
         executable: &executable,
         resolved: &resolved,
+        probe: command_probe::system(),
     };
 
     let path_detection = best_path_detection(&context);
@@ -73,9 +75,22 @@ fn inspect_path(resolution: Resolution) -> Installation {
 }
 
 fn best_path_detection(context: &DetectionContext<'_>) -> Option<Detection> {
+    let providers = provider::path_providers();
+    let mut cheap = Vec::with_capacity(providers.len());
+    for provider in providers {
+        let detection = provider.detect(context);
+        if detection
+            .as_ref()
+            .is_some_and(|detection| detection.confidence == Confidence::High)
+        {
+            return detection;
+        }
+        cheap.push(detection);
+    }
+
     let mut best = None;
-    for provider in provider::path_providers() {
-        let Some(detection) = provider.detect(context) else {
+    for (provider, detection) in providers.iter().zip(cheap) {
+        let Some(detection) = detection.or_else(|| provider.discover(context)) else {
             continue;
         };
         if detection.confidence == Confidence::High {
@@ -125,6 +140,30 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use crate::command_probe::{CommandProbe, CommandSpec};
+
+    struct RejectingProbe;
+
+    impl CommandProbe for RejectingProbe {
+        fn output(&self, _command: CommandSpec) -> Option<std::sync::Arc<[u8]>> {
+            panic!("static detection invoked a subprocess probe");
+        }
+    }
+
+    #[test]
+    fn static_high_confidence_path_skips_subprocess_probes() {
+        let executable = Path::new("/snap/bin/firefox");
+        let context = DetectionContext {
+            executable,
+            resolved: executable,
+            probe: &RejectingProbe,
+        };
+
+        let detection = best_path_detection(&context).expect("Snap detection");
+
+        assert_eq!(detection.manager, "Snap");
+        assert_eq!(detection.confidence, Confidence::High);
+    }
 
     #[test]
     fn detects_msys2_clang64_executable_by_path() {
@@ -132,6 +171,7 @@ mod tests {
         let context = DetectionContext {
             executable,
             resolved: executable,
+            probe: crate::command_probe::system(),
         };
 
         let detection = best_path_detection(&context).expect("MSYS2 detection");

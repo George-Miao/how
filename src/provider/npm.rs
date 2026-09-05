@@ -1,20 +1,24 @@
-use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::path::Path;
 
 use super::{Confidence, Detection, DetectionContext, Provider};
 use crate::util::{self, components, detect_paths, executable_name};
 
 pub(super) struct Npm;
 pub(super) static PROVIDER: Npm = Npm;
-static PREFIX: OnceLock<Option<PathBuf>> = OnceLock::new();
 
 impl Provider for Npm {
     fn detect(&self, context: &DetectionContext<'_>) -> Option<Detection> {
-        detect_paths(context, detect_path)
+        let prefix = util::env_path("NPM_CONFIG_PREFIX");
+        detect_paths(context, |path| detect_path(path, prefix.as_deref()))
+    }
+
+    fn discover(&self, context: &DetectionContext<'_>) -> Option<Detection> {
+        let prefix = util::command_path(context.probe, "npm", &["prefix", "--global"])?;
+        detect_paths(context, |path| detect_prefix(path, &prefix))
     }
 }
 
-fn detect_path(path: &Path) -> Option<Detection> {
+fn detect_path(path: &Path, prefix: Option<&Path>) -> Option<Detection> {
     let components = components(path);
     if !components.iter().any(|component| component == ".pnpm")
         && let Some(index) = components
@@ -29,7 +33,11 @@ fn detect_path(path: &Path) -> Option<Detection> {
         ));
     }
 
-    let bin = prefix()?.join("bin");
+    detect_prefix(path, prefix?)
+}
+
+fn detect_prefix(path: &Path, prefix: &Path) -> Option<Detection> {
+    let bin = prefix.join("bin");
     util::executable_is_in(path, &bin).then(|| {
         Detection::path(
             "npm",
@@ -38,15 +46,6 @@ fn detect_path(path: &Path) -> Option<Detection> {
             format!("executable is under npm global prefix {}", bin.display()),
         )
     })
-}
-
-fn prefix() -> Option<&'static PathBuf> {
-    PREFIX
-        .get_or_init(|| {
-            util::env_path("NPM_CONFIG_PREFIX")
-                .or_else(|| util::command_path("npm", &["prefix", "--global"]))
-        })
-        .as_ref()
 }
 
 fn node_package(components: &[String], node_modules_index: usize) -> Option<String> {
@@ -69,8 +68,11 @@ mod tests {
 
     #[test]
     fn extracts_scoped_package() {
-        let detection =
-            detect_path(Path::new("/repo/node_modules/@scope/tool/bin/tool.js")).unwrap();
+        let detection = detect_path(
+            Path::new("/repo/node_modules/@scope/tool/bin/tool.js"),
+            None,
+        )
+        .unwrap();
         assert_eq!(detection.package.as_deref(), Some("@scope/tool"));
     }
 }

@@ -1,12 +1,10 @@
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 use super::{Confidence, Detection, DetectionContext, Provider};
 use crate::util::{self, detect_paths, executable_name};
 
 pub(super) struct Uv;
 pub(super) static PROVIDER: Uv = Uv;
-static LOCATIONS: OnceLock<Locations> = OnceLock::new();
 
 struct Locations {
     tools: Option<PathBuf>,
@@ -15,12 +13,20 @@ struct Locations {
 
 impl Provider for Uv {
     fn detect(&self, context: &DetectionContext<'_>) -> Option<Detection> {
-        detect_paths(context, detect_path)
+        let locations = configured_locations();
+        detect_paths(context, |path| detect_path(path, &locations))
+    }
+
+    fn discover(&self, context: &DetectionContext<'_>) -> Option<Detection> {
+        let locations = Locations {
+            tools: util::command_path(context.probe, "uv", &["tool", "dir"]),
+            explicit_bin: None,
+        };
+        detect_paths(context, |path| detect_path(path, &locations))
     }
 }
 
-fn detect_path(path: &Path) -> Option<Detection> {
-    let locations = locations();
+fn detect_path(path: &Path, locations: &Locations) -> Option<Detection> {
     if let Some(root) = &locations.tools
         && let Some(package) = path
             .strip_prefix(root)
@@ -48,15 +54,13 @@ fn detect_path(path: &Path) -> Option<Detection> {
     })
 }
 
-fn locations() -> &'static Locations {
-    LOCATIONS.get_or_init(|| Locations {
-        tools: util::env_path("UV_TOOL_DIR")
-            .or_else(|| util::command_path("uv", &["tool", "dir"]))
-            .or_else(default_tools_dir),
+fn configured_locations() -> Locations {
+    Locations {
+        tools: util::env_path("UV_TOOL_DIR").or_else(default_tools_dir),
         // The default executable directory is shared by several installers, so
         // only an explicit override is strong enough to use as evidence.
         explicit_bin: util::env_path("UV_TOOL_BIN_DIR"),
-    })
+    }
 }
 
 fn default_tools_dir() -> Option<PathBuf> {

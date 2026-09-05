@@ -35,6 +35,8 @@ mod yarn;
 use std::borrow::Cow;
 use std::path::Path;
 
+use crate::command_probe::CommandProbe;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Confidence {
     High,
@@ -150,14 +152,20 @@ impl From<&Detection> for Evidence {
 pub struct DetectionContext<'a> {
     pub executable: &'a Path,
     pub resolved: &'a Path,
+    pub probe: &'a dyn CommandProbe,
 }
 
 /// A source of package-manager provenance evidence.
 ///
-/// Providers hide whether they inspect a path convention, invoke an ownership
-/// database, or use another mechanism added later.
+/// `detect` checks path conventions and configured or default roots. `discover`
+/// may run provider commands and is deferred until no static high-confidence
+/// detection matched.
 pub trait Provider: Send + Sync {
     fn detect(&self, context: &DetectionContext<'_>) -> Option<Detection>;
+
+    fn discover(&self, _context: &DetectionContext<'_>) -> Option<Detection> {
+        None
+    }
 }
 
 static PATH_PROVIDERS: &[&dyn Provider] = &[
