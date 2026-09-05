@@ -15,9 +15,13 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  ci:
-    name: Test and lint
-    runs-on: ubuntu-latest
+  test:
+    name: Test and lint (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -26,11 +30,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-
-      - name: Install nightly rustfmt
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt
 
       - name: Install nextest
         uses: taiki-e/install-action@v2
@@ -46,6 +45,18 @@ jobs:
 
       - name: Clippy
         run: cargo +stable clippy --locked --all-targets -- -D warnings
+
+  format:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install nightly rustfmt
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
 
       - name: Rustfmt
         run: cargo +nightly fmt --all -- --check
