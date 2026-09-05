@@ -23,6 +23,7 @@ mod pnpm;
 mod pyenv;
 mod rbenv;
 mod rpm;
+mod rustup;
 mod scoop;
 mod snap;
 mod system;
@@ -229,6 +230,24 @@ impl Detection {
             detail: detail.into(),
         }
     }
+
+    pub(super) fn toolchain_inspection(
+        manager: &'static str,
+        toolchain: Option<String>,
+        confidence: Confidence,
+        detail: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        Self {
+            manager,
+            provenance: Provenance {
+                toolchain,
+                ..Provenance::default()
+            },
+            confidence,
+            mechanism: Mechanism::Inspection,
+            detail: detail.into(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -301,6 +320,7 @@ static PATH_PROVIDERS: &[ProviderRegistration] = &[
     ProviderRegistration::new(1700, &bun::PROVIDER),
     ProviderRegistration::new(1800, &deno::PROVIDER),
     ProviderRegistration::new(1900, &composer::PROVIDER),
+    ProviderRegistration::new(1950, &rustup::PROVIDER),
     ProviderRegistration::new(2000, &cargo::PROVIDER),
     ProviderRegistration::new(2100, &go::PROVIDER),
     ProviderRegistration::new(2200, &msys2::PROVIDER),
