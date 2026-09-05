@@ -15,19 +15,24 @@ impl Provider for Asdf {
 }
 
 fn detect_path(path: &Path) -> Option<Detection> {
-    let root = root()?;
-    if let Some(tool) = util::child_after(path, root, "installs") {
-        return Some(Detection::path(
+    detect_under_root(path, root()?)
+}
+
+fn detect_under_root(path: &Path, root: &Path) -> Option<Detection> {
+    if let Some((toolchain, version)) = util::first_two_components(path, &root.join("installs")) {
+        return Some(Detection::toolchain_path(
             "asdf",
-            Some(tool),
+            Some(toolchain),
+            version,
             Confidence::High,
             format!("target lives in asdf data directory {}", root.display()),
         ));
     }
     util::executable_is_in(path, &root.join("shims")).then(|| {
-        Detection::path(
+        Detection::toolchain_path(
             "asdf",
             executable_name(path),
+            None,
             Confidence::Medium,
             format!("executable is a shim in {}", root.join("shims").display()),
         )
@@ -39,4 +44,22 @@ fn root() -> Option<&'static PathBuf> {
         util::env_path("ASDF_DATA_DIR").or_else(|| util::home_dir().map(|path| path.join(".asdf")))
     })
     .as_ref()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_toolchain_and_version() {
+        let detection = detect_under_root(
+            Path::new("/opt/asdf/installs/nodejs/22.0.0/bin/node"),
+            Path::new("/opt/asdf"),
+        )
+        .unwrap();
+
+        assert_eq!(detection.provenance.toolchain.as_deref(), Some("nodejs"));
+        assert_eq!(detection.provenance.version.as_deref(), Some("22.0.0"));
+        assert_eq!(detection.provenance.package, None);
+    }
 }

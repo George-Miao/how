@@ -35,9 +35,12 @@ mod yarn;
 use std::borrow::Cow;
 use std::path::Path;
 
+use serde::Serialize;
+
 use crate::command_probe::CommandProbe;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Confidence {
     High,
     Medium,
@@ -82,10 +85,19 @@ impl Mechanism {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Detection {
     pub manager: &'static str,
-    pub package: Option<String>,
+    pub provenance: Provenance,
     pub confidence: Confidence,
     pub mechanism: Mechanism,
     pub detail: Cow<'static, str>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct Provenance {
+    pub package: Option<String>,
+    pub version: Option<String>,
+    pub environment: Option<String>,
+    pub toolchain: Option<String>,
+    pub derivation: Option<String>,
 }
 
 impl Detection {
@@ -97,7 +109,86 @@ impl Detection {
     ) -> Self {
         Self {
             manager,
-            package,
+            provenance: Provenance {
+                package,
+                ..Provenance::default()
+            },
+            confidence,
+            mechanism: Mechanism::PathConvention,
+            detail: detail.into(),
+        }
+    }
+
+    pub(super) fn package_version_path(
+        manager: &'static str,
+        package: String,
+        version: Option<String>,
+        confidence: Confidence,
+        detail: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        Self {
+            manager,
+            provenance: Provenance {
+                package: Some(package),
+                version,
+                ..Provenance::default()
+            },
+            confidence,
+            mechanism: Mechanism::PathConvention,
+            detail: detail.into(),
+        }
+    }
+
+    pub(super) fn environment_path(
+        manager: &'static str,
+        environment: Option<String>,
+        confidence: Confidence,
+        detail: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        Self {
+            manager,
+            provenance: Provenance {
+                environment,
+                ..Provenance::default()
+            },
+            confidence,
+            mechanism: Mechanism::PathConvention,
+            detail: detail.into(),
+        }
+    }
+
+    pub(super) fn toolchain_path(
+        manager: &'static str,
+        toolchain: Option<String>,
+        version: Option<String>,
+        confidence: Confidence,
+        detail: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        Self {
+            manager,
+            provenance: Provenance {
+                version,
+                toolchain,
+                ..Provenance::default()
+            },
+            confidence,
+            mechanism: Mechanism::PathConvention,
+            detail: detail.into(),
+        }
+    }
+
+    pub(super) fn derivation_path(
+        manager: &'static str,
+        derivation: String,
+        confidence: Confidence,
+        detail: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        Self {
+            manager,
+            provenance: Provenance {
+                derivation: Some(derivation),
+                ..Provenance::default()
+            },
             confidence,
             mechanism: Mechanism::PathConvention,
             detail: detail.into(),
@@ -111,22 +202,28 @@ impl Detection {
     ) -> Self {
         Self {
             manager,
-            package: Some(package),
+            provenance: Provenance {
+                package: Some(package),
+                ..Provenance::default()
+            },
             confidence: Confidence::High,
             mechanism: Mechanism::PackageDatabase,
             detail: detail.into(),
         }
     }
 
-    pub(super) fn inspection(
+    pub(super) fn environment_inspection(
         manager: &'static str,
-        package: Option<String>,
+        environment: Option<String>,
         confidence: Confidence,
         detail: impl Into<Cow<'static, str>>,
     ) -> Self {
         Self {
             manager,
-            package,
+            provenance: Provenance {
+                environment,
+                ..Provenance::default()
+            },
             confidence,
             mechanism: Mechanism::Inspection,
             detail: detail.into(),
@@ -134,7 +231,7 @@ impl Detection {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Evidence {
     pub kind: &'static str,
     pub detail: String,

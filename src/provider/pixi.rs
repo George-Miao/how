@@ -19,7 +19,7 @@ fn detect_path(path: &Path) -> Option<Detection> {
     if let Some(index) = position(&path_components, &[".pixi", "envs"])
         && let Some(environment) = path_components.get(index + 2)
     {
-        return Some(Detection::path(
+        return Some(Detection::environment_path(
             "Pixi",
             Some(environment.clone()),
             Confidence::High,
@@ -32,7 +32,7 @@ fn detect_path(path: &Path) -> Option<Detection> {
 
 fn detect_under_home(path: &Path, home: &Path) -> Option<Detection> {
     if let Some(environment) = util::child_after(path, home, "envs") {
-        return Some(Detection::path(
+        return Some(Detection::environment_path(
             "Pixi",
             Some(environment),
             Confidence::High,
@@ -64,7 +64,8 @@ mod tests {
     fn detects_workspace_environment() {
         let detection = detect_path(Path::new("/work/project/.pixi/envs/test/bin/pytest")).unwrap();
         assert_eq!(detection.manager, "Pixi");
-        assert_eq!(detection.package.as_deref(), Some("test"));
+        assert_eq!(detection.provenance.environment.as_deref(), Some("test"));
+        assert_eq!(detection.provenance.package, None);
         assert_eq!(detection.confidence, Confidence::High);
     }
 
@@ -75,7 +76,8 @@ mod tests {
             Path::new("/opt/pixi"),
         )
         .unwrap();
-        assert_eq!(detection.package.as_deref(), Some("science"));
+        assert_eq!(detection.provenance.environment.as_deref(), Some("science"));
+        assert_eq!(detection.provenance.package, None);
         assert_eq!(detection.confidence, Confidence::High);
     }
 }

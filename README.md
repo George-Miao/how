@@ -54,6 +54,7 @@ $ how rg
   → /opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg
   manager      Homebrew
   package      ripgrep
+  version      14.1.1
   confidence   high
   evidence
     • path convention: target lives in a Homebrew Cellar
@@ -74,6 +75,41 @@ Produce stable, machine-readable output:
 ```console
 how --json rg
 ```
+
+The JSON document has an explicit version and keeps every provenance field
+present, using `null` when that detail is unknown:
+
+```json
+{
+  "schema_version": 1,
+  "installations": [
+    {
+      "executable": "/opt/homebrew/bin/rg",
+      "resolved": "/opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg",
+      "manager": "Homebrew",
+      "package": "ripgrep",
+      "version": "14.1.1",
+      "environment": null,
+      "toolchain": null,
+      "derivation": null,
+      "confidence": "high",
+      "evidence": [
+        {
+          "kind": "path convention",
+          "detail": "target lives in a Homebrew Cellar"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`package` is reserved for an installed package. `environment` identifies a
+Conda-compatible or Pixi environment, `toolchain` identifies a runtime managed
+by tools such as mise, asdf, pyenv, or rbenv, `version` records a detected
+package or toolchain version, and `derivation` identifies a Nix store
+derivation. Consumers should reject unsupported `schema_version` values; the
+version changes when the JSON contract changes incompatibly.
 
 Explain how matching candidates were ranked:
 

@@ -71,6 +71,6 @@ mod tests {
             Path::new("C:/portable/scoop"),
         )
         .unwrap();
-        assert_eq!(detection.package.as_deref(), Some("ripgrep"));
+        assert_eq!(detection.provenance.package.as_deref(), Some("ripgrep"));
     }
 }

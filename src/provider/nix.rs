@@ -14,11 +14,11 @@ impl Provider for Nix {
 
 fn detect_path(path: &Path) -> Option<Detection> {
     if let Some(store) = util::env_path("NIX_STORE_DIR")
-        && let Some(package) = store_package(path, &store)
+        && let Some(derivation) = store_derivation(path, &store)
     {
-        return Some(Detection::path(
+        return Some(Detection::derivation_path(
             "Nix",
-            Some(package),
+            derivation,
             Confidence::High,
             format!("target lives in configured Nix store {}", store.display()),
         ));
@@ -26,16 +26,16 @@ fn detect_path(path: &Path) -> Option<Detection> {
 
     let components = components(path);
     let index = position(&components, &["nix", "store"])?;
-    let package = store_name(components.get(index + 2)?);
-    Some(Detection::path(
+    let derivation = store_name(components.get(index + 2)?);
+    Some(Detection::derivation_path(
         "Nix",
-        Some(package),
+        derivation,
         Confidence::High,
         "target lives in /nix/store",
     ))
 }
 
-fn store_package(path: &Path, store: &Path) -> Option<String> {
+fn store_derivation(path: &Path, store: &Path) -> Option<String> {
     let entry = path.strip_prefix(store).ok()?.components().next()?;
     Some(store_name(&entry.as_os_str().to_string_lossy()))
 }
@@ -55,6 +55,10 @@ mod tests {
     #[test]
     fn extracts_store_entry_name() {
         let detection = detect_path(Path::new("/nix/store/abc123-ripgrep-14.1.1/bin/rg")).unwrap();
-        assert_eq!(detection.package.as_deref(), Some("ripgrep-14.1.1"));
+        assert_eq!(
+            detection.provenance.derivation.as_deref(),
+            Some("ripgrep-14.1.1")
+        );
+        assert_eq!(detection.provenance.package, None);
     }
 }

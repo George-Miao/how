@@ -5,9 +5,11 @@ use clap::builder::styling;
 use clap::{ColorChoice, Parser};
 use owo_colors::Stream::Stdout;
 use owo_colors::{OwoColorize, Style};
+use serde::Serialize;
 
 use crate::detect::{self, CandidateExplanation, Installation};
 use crate::error::Error;
+use crate::provider::Provenance;
 
 const CLAP_STYLES: styling::Styles = styling::Styles::styled()
     .header(styling::AnsiColor::Cyan.on_default().bold())
@@ -85,13 +87,7 @@ fn render_human(installations: &[Installation], explain: bool) -> String {
                 Style::new().bright_green().bold().style(manager)
             })
         );
-        if let Some(package) = &installation.package {
-            let _ = writeln!(
-                output,
-                "  package      {}",
-                package.if_supports_color(Stdout, |package| package.bright_magenta())
-            );
-        }
+        render_provenance(&mut output, "  ", &installation.provenance);
 
         let confidence = installation.confidence.as_str();
         let confidence_style = match installation.confidence {
@@ -146,65 +142,43 @@ fn render_candidate(output: &mut String, disposition: &str, candidate: &Candidat
         candidate.phase,
         candidate.mechanism
     );
-    if let Some(package) = &candidate.package {
-        let _ = writeln!(output, "      package: {package}");
-    }
+    render_provenance(output, "      ", &candidate.provenance);
     let _ = writeln!(output, "      evidence: {}", candidate.detail);
     let _ = writeln!(output, "      reason: {}", candidate.reason);
 }
 
-fn render_json(installations: &[Installation]) -> String {
-    let mut output = String::from("[");
-    for (index, installation) in installations.iter().enumerate() {
-        if index > 0 {
-            output.push(',');
+fn render_provenance(output: &mut String, indent: &str, provenance: &Provenance) {
+    for (label, value) in [
+        ("package", &provenance.package),
+        ("version", &provenance.version),
+        ("environment", &provenance.environment),
+        ("toolchain", &provenance.toolchain),
+        ("derivation", &provenance.derivation),
+    ] {
+        if let Some(value) = value {
+            let _ = writeln!(
+                output,
+                "{indent}{label:<12}{}",
+                value.if_supports_color(Stdout, |value| value.bright_magenta())
+            );
         }
-        output.push_str("{\"executable\":");
-        push_json_string(&mut output, &installation.executable.to_string_lossy());
-        output.push_str(",\"resolved\":");
-        push_json_string(&mut output, &installation.resolved.to_string_lossy());
-        output.push_str(",\"manager\":");
-        push_json_string(&mut output, installation.manager);
-        output.push_str(",\"package\":");
-        match &installation.package {
-            Some(package) => push_json_string(&mut output, package),
-            None => output.push_str("null"),
-        }
-        output.push_str(",\"confidence\":");
-        push_json_string(&mut output, installation.confidence.as_str());
-        output.push_str(",\"evidence\":[");
-        for (evidence_index, evidence) in installation.evidence.iter().enumerate() {
-            if evidence_index > 0 {
-                output.push(',');
-            }
-            output.push_str("{\"kind\":");
-            push_json_string(&mut output, evidence.kind);
-            output.push_str(",\"detail\":");
-            push_json_string(&mut output, &evidence.detail);
-            output.push('}');
-        }
-        output.push_str("]}");
     }
-    output.push(']');
-    output
 }
 
-fn push_json_string(output: &mut String, value: &str) {
-    output.push('"');
-    for character in value.chars() {
-        match character {
-            '"' => output.push_str("\\\""),
-            '\\' => output.push_str("\\\\"),
-            '\n' => output.push_str("\\n"),
-            '\r' => output.push_str("\\r"),
-            '\t' => output.push_str("\\t"),
-            character if character.is_control() => {
-                let _ = write!(output, "\\u{:04x}", character as u32);
-            }
-            character => output.push(character),
-        }
-    }
-    output.push('"');
+const JSON_SCHEMA_VERSION: u8 = 1;
+
+#[derive(Serialize)]
+struct JsonOutput<'a> {
+    schema_version: u8,
+    installations: &'a [Installation],
+}
+
+fn render_json(installations: &[Installation]) -> String {
+    serde_json::to_string(&JsonOutput {
+        schema_version: JSON_SCHEMA_VERSION,
+        installations,
+    })
+    .expect("JSON output contains only serializable values")
 }
 
 #[cfg(test)]
@@ -214,7 +188,7 @@ mod tests {
     use clap::CommandFactory;
 
     use super::*;
-    use crate::provider::{Confidence, Evidence};
+    use crate::provider::{Confidence, Evidence, Provenance};
 
     #[test]
     fn clap_parses_options() {
@@ -255,7 +229,10 @@ mod tests {
             executable: PathBuf::from("/nix/store/abc-ripgrep/bin/rg"),
             resolved: PathBuf::from("/nix/store/abc-ripgrep/bin/rg"),
             manager: "Nix",
-            package: Some("ripgrep".into()),
+            provenance: Provenance {
+                derivation: Some("ripgrep-14.1.1".into()),
+                ..Provenance::default()
+            },
             confidence: Confidence::High,
             evidence: vec![Evidence {
                 kind: "path convention",
@@ -264,7 +241,10 @@ mod tests {
             arbitration: Some(crate::detect::ArbitrationExplanation {
                 selected: CandidateExplanation {
                     manager: "Nix",
-                    package: Some("ripgrep".into()),
+                    provenance: Provenance {
+                        derivation: Some("ripgrep-14.1.1".into()),
+                        ..Provenance::default()
+                    },
                     confidence: Confidence::High,
                     phase: "cheap path",
                     mechanism: "path convention",
@@ -273,7 +253,10 @@ mod tests {
                 },
                 rejected: vec![CandidateExplanation {
                     manager: "Cargo",
-                    package: Some("rg".into()),
+                    provenance: Provenance {
+                        package: Some("rg".into()),
+                        ..Provenance::default()
+                    },
                     confidence: Confidence::Medium,
                     phase: "cheap path",
                     mechanism: "path convention",
@@ -288,16 +271,23 @@ mod tests {
         assert!(output.contains("selected Nix"), "{output}");
         assert!(output.contains("rejected Cargo"), "{output}");
         assert!(output.contains("lower confidence"), "{output}");
+        assert!(output.contains("derivation  ripgrep-14.1.1"), "{output}");
         assert!(!render_human(&[installation], false).contains("arbitration"));
     }
 
     #[test]
-    fn json_output_escapes_values() {
+    fn json_output_has_a_versioned_stable_contract() {
         let installation = Installation {
             executable: PathBuf::from("/tmp/a\"b"),
             resolved: PathBuf::from("/tmp/a\"b"),
             manager: "unknown",
-            package: None,
+            provenance: Provenance {
+                package: Some("ripgrep".into()),
+                version: Some("14.1.1".into()),
+                environment: Some("dev".into()),
+                toolchain: Some("rust".into()),
+                derivation: Some("ripgrep-14.1.1".into()),
+            },
             confidence: Confidence::Low,
             evidence: vec![Evidence {
                 kind: "path convention",
@@ -306,9 +296,64 @@ mod tests {
             arbitration: None,
         };
 
+        assert_eq!(
+            render_json(&[installation]),
+            concat!(
+                "{\"schema_version\":1,\"installations\":[",
+                "{\"executable\":\"/tmp/a\\\"b\",\"resolved\":\"/tmp/a\\\"b\",",
+                "\"manager\":\"unknown\",\"package\":\"ripgrep\",\"version\":\"14.1.1\",",
+                "\"environment\":\"dev\",\"toolchain\":\"rust\",",
+                "\"derivation\":\"ripgrep-14.1.1\",\"confidence\":\"low\",",
+                "\"evidence\":[{\"kind\":\"path convention\",\"detail\":\"line\\none\"}]}]}"
+            )
+        );
+        assert_eq!(
+            render_json(&[]),
+            "{\"schema_version\":1,\"installations\":[]}"
+        );
+    }
+
+    #[test]
+    fn json_output_keeps_nullable_provenance_fields() {
+        let installation = Installation {
+            executable: PathBuf::from("/usr/bin/tool"),
+            resolved: PathBuf::from("/usr/bin/tool"),
+            manager: "unknown",
+            provenance: Provenance::default(),
+            confidence: Confidence::Low,
+            evidence: Vec::new(),
+            arbitration: None,
+        };
+
+        assert_eq!(
+            render_json(&[installation]),
+            concat!(
+                "{\"schema_version\":1,\"installations\":[",
+                "{\"executable\":\"/usr/bin/tool\",\"resolved\":\"/usr/bin/tool\",",
+                "\"manager\":\"unknown\",\"package\":null,\"version\":null,",
+                "\"environment\":null,\"toolchain\":null,\"derivation\":null,",
+                "\"confidence\":\"low\",\"evidence\":[]}]}"
+            )
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn json_output_preserves_lossy_non_utf8_path_compatibility() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let path = PathBuf::from(OsString::from_vec(b"/tmp/a\xffb".to_vec()));
+        let installation = Installation {
+            executable: path.clone(),
+            resolved: path,
+            manager: "unknown",
+            provenance: Provenance::default(),
+            confidence: Confidence::Low,
+            evidence: Vec::new(),
+            arbitration: None,
+        };
+
         let json = render_json(&[installation]);
-        assert!(json.contains("a\\\"b"));
-        assert!(json.contains("\"confidence\":\"low\""));
-        assert_eq!(render_json(&[]), "[]");
+        assert!(json.contains("/tmp/a�b"), "{json}");
     }
 }

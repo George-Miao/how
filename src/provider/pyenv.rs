@@ -21,17 +21,19 @@ impl Provider for Pyenv {
 
 fn detect_under_root(path: &Path, root: &Path) -> Option<Detection> {
     if let Some(version) = util::child_after(path, root, "versions") {
-        return Some(Detection::path(
+        return Some(Detection::toolchain_path(
             "pyenv",
+            Some("python".into()),
             Some(version),
             Confidence::High,
             format!("target lives under pyenv root {}", root.display()),
         ));
     }
     util::executable_is_in(path, &root.join("shims")).then(|| {
-        Detection::path(
+        Detection::toolchain_path(
             "pyenv",
             executable_name(path),
+            None,
             Confidence::Medium,
             format!("executable is a shim under pyenv root {}", root.display()),
         )
@@ -49,6 +51,8 @@ mod tests {
             Path::new("/srv/python"),
         )
         .unwrap();
-        assert_eq!(detection.package.as_deref(), Some("3.13"));
+        assert_eq!(detection.provenance.toolchain.as_deref(), Some("python"));
+        assert_eq!(detection.provenance.version.as_deref(), Some("3.13"));
+        assert_eq!(detection.provenance.package, None);
     }
 }
