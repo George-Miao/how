@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 
-use super::{Shell, first_word, framed_value, query_output};
+use super::{CommandProbe, Shell, first_word, framed_value, query_output};
 
 const QUERY: &str = "printf '\\0'; alias -- \"$HOW_ALIAS_COMMAND\" 2>/dev/null; printf '\\0'";
 
@@ -12,8 +12,8 @@ impl Shell for Bash {
         &["bash"]
     }
 
-    fn query(&self, program: &OsStr, command: &OsStr) -> Option<String> {
-        let output = query_output(program, command, QUERY)?;
+    fn query(&self, probe: &dyn CommandProbe, program: &OsStr, command: &OsStr) -> Option<String> {
+        let output = query_output(probe, program, command, QUERY)?;
         parse(&output)
     }
 }

@@ -1,12 +1,10 @@
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 use super::{Confidence, Detection, DetectionContext, Provider};
 use crate::util::{self, detect_paths, executable_name};
 
 pub(super) struct Pipx;
 pub(super) static PROVIDER: Pipx = Pipx;
-static LOCATIONS: OnceLock<Locations> = OnceLock::new();
 
 struct Locations {
     homes: Vec<PathBuf>,
@@ -15,12 +13,30 @@ struct Locations {
 
 impl Provider for Pipx {
     fn detect(&self, context: &DetectionContext<'_>) -> Option<Detection> {
-        detect_paths(context, detect_path)
+        let locations = configured_locations();
+        detect_paths(context, |path| detect_path(path, &locations))
+    }
+
+    fn discover(&self, context: &DetectionContext<'_>) -> Option<Detection> {
+        if let Some(home) = pipx_value(context.probe, "PIPX_HOME") {
+            let locations = Locations {
+                homes: vec![home],
+                explicit_bins: Vec::new(),
+            };
+            if let Some(detection) = detect_paths(context, |path| detect_path(path, &locations)) {
+                return Some(detection);
+            }
+        }
+        let home = pipx_global_value(context.probe, "PIPX_GLOBAL_HOME")?;
+        let locations = Locations {
+            homes: vec![home],
+            explicit_bins: Vec::new(),
+        };
+        detect_paths(context, |path| detect_path(path, &locations))
     }
 }
 
-fn detect_path(path: &Path) -> Option<Detection> {
-    let locations = locations();
+fn detect_path(path: &Path, locations: &Locations) -> Option<Detection> {
     for home in &locations.homes {
         if let Some(package) = util::child_after(path, home, "venvs") {
             return Some(Detection::path(
@@ -46,39 +62,35 @@ fn detect_path(path: &Path) -> Option<Detection> {
     ))
 }
 
-fn locations() -> &'static Locations {
-    LOCATIONS.get_or_init(|| {
-        let mut homes = Vec::new();
-        push_unique(
-            &mut homes,
-            util::env_path("PIPX_HOME")
-                .or_else(|| pipx_value("PIPX_HOME"))
-                .or_else(default_home),
-        );
-        push_unique(
-            &mut homes,
-            util::env_path("PIPX_GLOBAL_HOME").or_else(|| pipx_global_value("PIPX_GLOBAL_HOME")),
-        );
-        if let Some(home) = util::home_dir() {
-            push_unique(&mut homes, Some(home.join(".local/pipx")));
-        }
+fn configured_locations() -> Locations {
+    let mut homes = Vec::new();
+    push_unique(
+        &mut homes,
+        util::env_path("PIPX_HOME").or_else(default_home),
+    );
+    push_unique(&mut homes, util::env_path("PIPX_GLOBAL_HOME"));
+    if let Some(home) = util::home_dir() {
+        push_unique(&mut homes, Some(home.join(".local/pipx")));
+    }
 
-        let mut explicit_bins = Vec::new();
-        push_unique(&mut explicit_bins, util::env_path("PIPX_BIN_DIR"));
-        push_unique(&mut explicit_bins, util::env_path("PIPX_GLOBAL_BIN_DIR"));
-        Locations {
-            homes,
-            explicit_bins,
-        }
-    })
+    let mut explicit_bins = Vec::new();
+    push_unique(&mut explicit_bins, util::env_path("PIPX_BIN_DIR"));
+    push_unique(&mut explicit_bins, util::env_path("PIPX_GLOBAL_BIN_DIR"));
+    Locations {
+        homes,
+        explicit_bins,
+    }
 }
 
-fn pipx_value(name: &str) -> Option<PathBuf> {
-    util::command_path("pipx", &["environment", "--value", name])
+fn pipx_value(probe: &dyn crate::command_probe::CommandProbe, name: &str) -> Option<PathBuf> {
+    util::command_path(probe, "pipx", &["environment", "--value", name])
 }
 
-fn pipx_global_value(name: &str) -> Option<PathBuf> {
-    util::command_path("pipx", &["environment", "--global", "--value", name])
+fn pipx_global_value(
+    probe: &dyn crate::command_probe::CommandProbe,
+    name: &str,
+) -> Option<PathBuf> {
+    util::command_path(probe, "pipx", &["environment", "--global", "--value", name])
 }
 
 fn default_home() -> Option<PathBuf> {

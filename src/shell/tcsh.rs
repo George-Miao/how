@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 
-use super::{Shell, query_output};
+use super::{CommandProbe, Shell, query_output};
 
 const QUERY: &str = "alias \"$HOW_ALIAS_COMMAND\"";
 
@@ -12,8 +12,8 @@ impl Shell for Tcsh {
         &["tcsh", "csh"]
     }
 
-    fn query(&self, program: &OsStr, command: &OsStr) -> Option<String> {
-        let output = query_output(program, command, QUERY)?;
+    fn query(&self, probe: &dyn CommandProbe, program: &OsStr, command: &OsStr) -> Option<String> {
+        let output = query_output(probe, program, command, QUERY)?;
         parse(&output)
     }
 }

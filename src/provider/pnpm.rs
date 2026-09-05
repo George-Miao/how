@@ -1,20 +1,24 @@
-use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::path::Path;
 
 use super::{Confidence, Detection, DetectionContext, Provider};
 use crate::util::{self, components, detect_paths, executable_name, position};
 
 pub(super) struct Pnpm;
 pub(super) static PROVIDER: Pnpm = Pnpm;
-static GLOBAL_BIN: OnceLock<Option<PathBuf>> = OnceLock::new();
 
 impl Provider for Pnpm {
     fn detect(&self, context: &DetectionContext<'_>) -> Option<Detection> {
-        detect_paths(context, detect_path)
+        let global_bin = util::env_path("PNPM_HOME");
+        detect_paths(context, |path| detect_path(path, global_bin.as_deref()))
+    }
+
+    fn discover(&self, context: &DetectionContext<'_>) -> Option<Detection> {
+        let global_bin = util::command_path(context.probe, "pnpm", &["bin", "--global"])?;
+        detect_paths(context, |path| detect_global_bin(path, &global_bin))
     }
 }
 
-fn detect_path(path: &Path) -> Option<Detection> {
+fn detect_path(path: &Path, global_bin: Option<&Path>) -> Option<Detection> {
     let components = components(path);
     if components.iter().any(|component| component == ".pnpm") {
         let package = components
@@ -40,7 +44,7 @@ fn detect_path(path: &Path) -> Option<Detection> {
         ));
     }
 
-    detect_global_bin(path, global_bin()?)
+    detect_global_bin(path, global_bin?)
 }
 
 fn detect_global_bin(path: &Path, global_bin: &Path) -> Option<Detection> {
@@ -55,14 +59,6 @@ fn detect_global_bin(path: &Path, global_bin: &Path) -> Option<Detection> {
             ),
         )
     })
-}
-
-fn global_bin() -> Option<&'static PathBuf> {
-    GLOBAL_BIN
-        .get_or_init(|| {
-            util::env_path("PNPM_HOME").or_else(|| util::command_path("pnpm", &["bin", "--global"]))
-        })
-        .as_ref()
 }
 
 fn node_package(components: &[String], node_modules_index: usize) -> Option<String> {

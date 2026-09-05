@@ -8,8 +8,8 @@ mod zsh;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
-use std::process::Command;
 
+use crate::command_probe::{self, CommandProbe, CommandSpec};
 const COMMAND_ENV: &str = "HOW_ALIAS_COMMAND";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -20,7 +20,7 @@ pub struct Expansion {
 
 trait Shell: Send + Sync {
     fn names(&self) -> &'static [&'static str];
-    fn query(&self, program: &OsStr, command: &OsStr) -> Option<String>;
+    fn query(&self, probe: &dyn CommandProbe, program: &OsStr, command: &OsStr) -> Option<String>;
 }
 
 static SHELLS: &[&dyn Shell] = &[
@@ -76,16 +76,20 @@ fn query(command: &OsStr) -> Option<String> {
         .is_file()
         .then(|| configured.clone())
         .or_else(|| path.file_name().map(OsString::from))?;
-    shell.query(&program, command)
+    shell.query(command_probe::system(), &program, command)
 }
 
-fn query_output(program: &OsStr, command: &OsStr, script: &str) -> Option<Vec<u8>> {
-    Command::new(program)
-        .args(["-ic", script])
-        .env(COMMAND_ENV, command)
-        .output()
-        .ok()
-        .map(|output| output.stdout)
+fn query_output(
+    probe: &dyn CommandProbe,
+    program: &OsStr,
+    command: &OsStr,
+    script: &str,
+) -> Option<std::sync::Arc<[u8]>> {
+    probe.output(
+        CommandSpec::new(program)
+            .args(["-ic", script])
+            .env(COMMAND_ENV, command),
+    )
 }
 
 fn framed_value(output: &[u8]) -> Option<String> {
