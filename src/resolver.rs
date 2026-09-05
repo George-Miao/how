@@ -12,9 +12,14 @@ pub struct Resolution {
     pub aliases: Vec<Expansion>,
 }
 
-pub fn resolve(command: &OsStr, all: bool) -> Result<Vec<Resolution>, Error> {
+pub fn resolve(
+    command: &OsStr,
+    all: bool,
+    aliases: &shell::AliasResolution,
+) -> Result<Vec<Resolution>, Error> {
     let path = Path::new(command);
     if path.components().count() > 1 || path.is_absolute() {
+        shell::validate(aliases)?;
         let resolved = explicit_candidates(path)
             .into_iter()
             .find(|candidate| is_executable(candidate));
@@ -30,7 +35,7 @@ pub fn resolve(command: &OsStr, all: bool) -> Result<Vec<Resolution>, Error> {
         }]);
     }
 
-    let (command, aliases) = shell::expand(command);
+    let (command, aliases) = shell::expand(command, aliases)?;
     resolve_path(&command, all).map(|paths| {
         paths
             .into_iter()

@@ -10,6 +10,7 @@ use serde::Serialize;
 use crate::detect::{self, CandidateExplanation, Installation};
 use crate::error::Error;
 use crate::provider::Provenance;
+use crate::shell::AliasResolution;
 
 const CLAP_STYLES: styling::Styles = styling::Styles::styled()
     .header(styling::AnsiColor::Cyan.on_default().bold())
@@ -38,6 +39,14 @@ struct Cli {
     #[arg(long, conflicts_with = "json")]
     explain: bool,
 
+    /// Resolve aliases using this shell program or path
+    #[arg(long, value_name = "PROGRAM-OR-PATH", conflicts_with = "no_aliases")]
+    shell: Option<OsString>,
+
+    /// Skip shell alias resolution
+    #[arg(long, conflicts_with = "shell")]
+    no_aliases: bool,
+
     /// Command name or executable path to inspect
     #[arg(value_name = "COMMAND")]
     command: OsString,
@@ -45,7 +54,12 @@ struct Cli {
 
 pub fn run() -> Result<(), Error> {
     let options = Cli::parse();
-    let installations = detect::inspect(&options.command, options.all, options.explain)?;
+    let aliases = match (options.no_aliases, options.shell) {
+        (true, _) => AliasResolution::Disabled,
+        (false, Some(shell)) => AliasResolution::Explicit(shell),
+        (false, None) => AliasResolution::Auto,
+    };
+    let installations = detect::inspect(&options.command, options.all, options.explain, &aliases)?;
     if options.json {
         println!("{}", render_json(&installations));
     } else {
@@ -192,7 +206,8 @@ mod tests {
 
     #[test]
     fn clap_parses_options() {
-        let options = Cli::try_parse_from(["how", "--json", "--all", "rg"]).unwrap();
+        let options =
+            Cli::try_parse_from(["how", "--json", "--all", "--shell", "/bin/bash", "rg"]).unwrap();
         assert_eq!(
             options,
             Cli {
@@ -200,8 +215,18 @@ mod tests {
                 all: true,
                 json: true,
                 explain: false,
+                shell: Some(OsString::from("/bin/bash")),
+                no_aliases: false,
             }
         );
+    }
+
+    #[test]
+    fn clap_rejects_shell_with_no_aliases() {
+        let error = Cli::try_parse_from(["how", "--shell", "bash", "--no-aliases", "rg"])
+            .expect_err("options conflict");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
     #[test]
     fn clap_rejects_explain_with_json() {

@@ -7,9 +7,11 @@ mod zsh;
 
 use std::env;
 use std::ffi::{OsStr, OsString};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::command_probe::{self, CommandProbe, CommandSpec};
+use crate::error::Error;
+
 const COMMAND_ENV: &str = "HOW_ALIAS_COMMAND";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,9 +20,21 @@ pub struct Expansion {
     pub value: String,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum AliasResolution {
+    #[default]
+    Auto,
+    Disabled,
+    Explicit(OsString),
+}
+
 trait Shell: Send + Sync {
     fn names(&self) -> &'static [&'static str];
     fn query(&self, probe: &dyn CommandProbe, program: &OsStr, command: &OsStr) -> Option<String>;
+
+    fn validation_arguments(&self) -> &'static [&'static str] {
+        &["-c", ""]
+    }
 }
 
 static SHELLS: &[&dyn Shell] = &[
@@ -32,8 +46,43 @@ static SHELLS: &[&dyn Shell] = &[
     &tcsh::SHELL,
 ];
 
-pub fn expand(command: &OsStr) -> (OsString, Vec<Expansion>) {
-    expand_with(command, query)
+pub fn validate(configuration: &AliasResolution) -> Result<(), Error> {
+    let Some((shell, program, explicit)) = select_shell(configuration)? else {
+        return Ok(());
+    };
+    validate_selected(shell, &program, explicit)
+}
+
+pub fn expand(
+    command: &OsStr,
+    configuration: &AliasResolution,
+) -> Result<(OsString, Vec<Expansion>), Error> {
+    let Some((shell, program, explicit)) = select_shell(configuration)? else {
+        return Ok((command.to_os_string(), Vec::new()));
+    };
+    validate_selected(shell, &program, explicit)?;
+    let probe = command_probe::system();
+
+    Ok(expand_with(command, |command| {
+        shell.query(probe, &program, command)
+    }))
+}
+
+fn validate_selected(
+    shell: &'static dyn Shell,
+    program: &OsStr,
+    explicit: bool,
+) -> Result<(), Error> {
+    if explicit
+        && command_probe::system()
+            .output(CommandSpec::new(program).args(shell.validation_arguments()))
+            .is_none()
+    {
+        return Err(Error::ShellUnavailable {
+            shell: program.to_os_string(),
+        });
+    }
+    Ok(())
 }
 
 fn expand_with(
@@ -62,21 +111,53 @@ fn expand_with(
     (current, expansions)
 }
 
-fn query(command: &OsStr) -> Option<String> {
-    let configured = env::var_os("SHELL")?;
+fn select_shell(
+    configuration: &AliasResolution,
+) -> Result<Option<(&'static dyn Shell, OsString, bool)>, Error> {
+    let (configured, explicit) = match configuration {
+        AliasResolution::Auto => {
+            // SHELL is authoritative on every platform. In particular, Windows
+            // does not imply PowerShell when SHELL is absent.
+            let Some(configured) = env::var_os("SHELL") else {
+                return Ok(None);
+            };
+            (configured, false)
+        }
+        AliasResolution::Disabled => return Ok(None),
+        AliasResolution::Explicit(configured) => (configured.clone(), true),
+    };
     let path = Path::new(&configured);
-    let name = path.file_stem()?.to_string_lossy();
-    let shell = SHELLS.iter().find(|shell| {
-        shell
-            .names()
-            .iter()
-            .any(|candidate| name.eq_ignore_ascii_case(candidate))
-    })?;
-    let program = path
-        .is_file()
-        .then(|| configured.clone())
-        .or_else(|| path.file_name().map(OsString::from))?;
-    shell.query(command_probe::system(), &program, command)
+    let name = path.file_stem().map(|name| name.to_string_lossy());
+    let shell = name.and_then(|name| {
+        SHELLS.iter().copied().find(|shell| {
+            shell
+                .names()
+                .iter()
+                .any(|candidate| name.eq_ignore_ascii_case(candidate))
+        })
+    });
+    let Some(shell) = shell else {
+        return if explicit {
+            Err(Error::UnsupportedShell { shell: configured })
+        } else {
+            Ok(None)
+        };
+    };
+
+    let has_path = path.is_absolute() || path.components().count() > 1;
+    if explicit && has_path && !path.is_file() {
+        return Err(Error::InvalidShellPath {
+            path: PathBuf::from(configured),
+        });
+    }
+    let program = if path.is_file() || !has_path {
+        configured
+    } else {
+        path.file_name()
+            .map(OsString::from)
+            .expect("supported shell has a file name")
+    };
+    Ok(Some((shell, program, explicit)))
 }
 
 fn query_output(
@@ -100,7 +181,80 @@ fn framed_value(output: &[u8]) -> Option<String> {
 }
 
 fn first_word(value: &str) -> Option<OsString> {
-    shell_words(value).into_iter().next()
+    let words = shell_words(value);
+    wrapped_command(&words)
+}
+
+fn wrapped_command(words: &[OsString]) -> Option<OsString> {
+    let mut index = 0;
+    loop {
+        let word = words.get(index)?.to_str()?;
+        match word {
+            "command" => {
+                index += 1;
+                if words
+                    .get(index)
+                    .is_some_and(|option| option.as_os_str() == OsStr::new("--"))
+                {
+                    index += 1;
+                }
+                if words
+                    .get(index)
+                    .and_then(|word| word.to_str())
+                    .is_some_and(|option| option.starts_with('-'))
+                {
+                    return None;
+                }
+            }
+            "env" => {
+                index += 1;
+                while let Some(argument) = words.get(index).and_then(|word| word.to_str()) {
+                    match argument {
+                        "--" => index += 1,
+                        "-u" | "--unset" => {
+                            let name = words.get(index + 1)?.to_str()?;
+                            if name.eq_ignore_ascii_case("PATH") {
+                                return None;
+                            }
+                            index += 2;
+                        }
+                        option if option.starts_with("--unset=") => {
+                            let name = option
+                                .strip_prefix("--unset=")
+                                .expect("prefix matched above");
+                            if name.eq_ignore_ascii_case("PATH") {
+                                return None;
+                            }
+                            index += 1;
+                        }
+                        option if option.starts_with('-') => return None,
+                        assignment if is_environment_assignment(assignment) => {
+                            if assignment
+                                .split_once('=')
+                                .is_some_and(|(name, _)| name.eq_ignore_ascii_case("PATH"))
+                            {
+                                return None;
+                            }
+                            index += 1;
+                        }
+                        _ => break,
+                    }
+                }
+            }
+            _ => return Some(words[index].clone()),
+        }
+    }
+}
+
+fn is_environment_assignment(value: &str) -> bool {
+    let Some((name, _)) = value.split_once('=') else {
+        return false;
+    };
+    let mut characters = name.chars();
+    characters
+        .next()
+        .is_some_and(|character| character == '_' || character.is_ascii_alphabetic())
+        && characters.all(|character| character == '_' || character.is_ascii_alphanumeric())
 }
 
 fn shell_words(value: &str) -> Vec<OsString> {
@@ -160,6 +314,24 @@ mod tests {
     }
 
     #[test]
+    fn stops_alias_cycles_at_the_repeated_command() {
+        let (target, expansions) = expand_with(OsStr::new("a"), |command| match command.to_str() {
+            Some("a") => Some("b --first".into()),
+            Some("b") => Some("a --second".into()),
+            _ => None,
+        });
+
+        assert_eq!(target, "a");
+        assert_eq!(
+            expansions
+                .iter()
+                .map(|expansion| expansion.name.as_os_str())
+                .collect::<Vec<_>>(),
+            [OsStr::new("a"), OsStr::new("b")]
+        );
+    }
+
+    #[test]
     fn self_alias_resolves_to_the_path_command() {
         let (target, expansions) = expand_with(OsStr::new("rg"), |_| Some("rg --hidden".into()));
 
@@ -173,6 +345,26 @@ mod tests {
             first_word("  '/Applications/My Tool/bin/tool' --flag"),
             Some(OsString::from("/Applications/My Tool/bin/tool"))
         );
+    }
+
+    #[test]
+    fn unwraps_safe_env_and_command_wrappers() {
+        assert_eq!(
+            first_word("env -u DEBUG MODE=fast -- command -- 'my tool' --flag"),
+            Some(OsString::from("my tool"))
+        );
+        assert_eq!(
+            first_word("command -- /opt/tools/rg --hidden"),
+            Some(OsString::from("/opt/tools/rg"))
+        );
+    }
+
+    #[test]
+    fn leaves_unsafe_wrapper_forms_unresolved() {
+        assert_eq!(first_word("env -S 'tool --flag'"), None);
+        assert_eq!(first_word("env PATH=/tmp tool"), None);
+        assert_eq!(first_word("command -p tool"), None);
+        assert_eq!(first_word("command -v tool"), None);
     }
 
     #[test]

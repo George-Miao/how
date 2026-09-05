@@ -37,6 +37,22 @@ impl TestFs {
     }
 }
 
+#[cfg(unix)]
+impl TestFs {
+    fn script(&self, relative: impl AsRef<Path>, contents: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = self.root.join(relative);
+        fs::create_dir_all(path.parent().expect("fixture script has a parent"))
+            .expect("create fixture directory");
+        fs::write(&path, contents).expect("write fixture script");
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).expect("make fixture script executable");
+        path
+    }
+}
+
 impl Drop for TestFs {
     fn drop(&mut self) {
         fs::remove_dir_all(&self.root).expect("remove isolated test directory");
@@ -185,6 +201,134 @@ fn missing_command_has_a_nonzero_status_and_no_json_payload() {
     assert!(stderr.starts_with("how: "), "{stderr}");
     assert!(stderr.contains("definitely-missing"), "{stderr}");
     assert!(stderr.contains("was not found in PATH"), "{stderr}");
+}
+
+#[cfg(unix)]
+#[test]
+fn no_aliases_overrides_shell_auto_detection() {
+    let fs = TestFs::new();
+    let bin = fs.root.join("bin");
+    let executable = fs.executable(bin.join("fixture"));
+    fs.executable(bin.join("target"));
+    let shell = fs.script(
+        bin.join("bash"),
+        "#!/bin/sh\nprintf \"\\0alias fixture='target'\\n\\0\"\n",
+    );
+    let path = std::env::join_paths([&bin]).expect("fixture PATH is representable");
+    let output = Command::new(how_binary())
+        .env_clear()
+        .env("PATH", path)
+        .env("SHELL", shell)
+        .args(["--json", "--no-aliases", "fixture"])
+        .output()
+        .expect("execute how binary");
+    let json = json_output(&output);
+
+    assert_eq!(
+        PathBuf::from(json["installations"][0]["executable"].as_str().unwrap()),
+        executable
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn shell_environment_still_auto_detects_aliases() {
+    let fs = TestFs::new();
+    let bin = fs.root.join("bin");
+    let target = fs.executable(bin.join("target"));
+    let shell = fs.script(
+        bin.join("bash"),
+        "#!/bin/sh\nif [ \"$HOW_ALIAS_COMMAND\" = fixture ]; then\n  printf \"\\0alias \
+         fixture='target'\\n\\0\"\nelse\n  printf '\\0\\0'\nfi\n",
+    );
+    let path = std::env::join_paths([&bin]).expect("fixture PATH is representable");
+    let output = Command::new(how_binary())
+        .env_clear()
+        .env("PATH", path)
+        .env("SHELL", shell)
+        .args(["--json", "fixture"])
+        .output()
+        .expect("execute how binary");
+    let json = json_output(&output);
+
+    assert_eq!(
+        PathBuf::from(json["installations"][0]["executable"].as_str().unwrap()),
+        target
+    );
+    assert_eq!(
+        json["installations"][0]["evidence"][0]["kind"],
+        "shell alias"
+    );
+}
+
+#[test]
+fn unsupported_explicit_shell_is_a_clear_error() {
+    let fs = TestFs::new();
+    let executable = fs.executable(Path::new("bin").join(fixture_name("fixture")));
+    let output = run_how(
+        [executable.parent().unwrap()],
+        &[
+            OsStr::new("--shell"),
+            OsStr::new("unsupported-shell"),
+            OsStr::new("fixture"),
+        ],
+    );
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+    assert!(stderr.contains("unsupported shell"), "{stderr}");
+}
+
+#[test]
+fn invalid_explicit_shell_path_is_rejected_before_inspecting_a_command_path() {
+    let fs = TestFs::new();
+    let executable = fs.executable(Path::new("bin").join(fixture_name("fixture")));
+    let shell = fs.root.join("missing").join(fixture_name("bash"));
+    let output = run_how(
+        [executable.parent().unwrap()],
+        &[
+            OsStr::new("--shell"),
+            shell.as_os_str(),
+            executable.as_os_str(),
+        ],
+    );
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+    assert!(stderr.contains("shell path"), "{stderr}");
+    assert!(stderr.contains("is not an executable file"), "{stderr}");
+}
+
+#[cfg(unix)]
+#[test]
+fn explicit_shell_program_expands_an_alias() {
+    let fs = TestFs::new();
+    let bin = fs.root.join("bin");
+    let target = fs.executable(bin.join("target"));
+    fs.script(
+        bin.join("bash"),
+        "#!/bin/sh\nif [ \"$HOW_ALIAS_COMMAND\" = ll ]; then\n  printf \"\\0alias ll='target \
+         --long'\\n\\0\"\nelse\n  printf '\\0\\0'\nfi\n",
+    );
+    let output = run_how(
+        [&bin],
+        &[
+            OsStr::new("--json"),
+            OsStr::new("--shell"),
+            OsStr::new("bash"),
+            OsStr::new("ll"),
+        ],
+    );
+    let json = json_output(&output);
+
+    assert_eq!(
+        PathBuf::from(json["installations"][0]["executable"].as_str().unwrap()),
+        target
+    );
+    assert_eq!(
+        json["installations"][0]["evidence"][0]["kind"],
+        "shell alias"
+    );
 }
 
 #[cfg(target_os = "linux")]

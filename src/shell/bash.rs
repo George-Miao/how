@@ -36,4 +36,12 @@ mod tests {
             Some("printf '%s\\n'".into())
         );
     }
+
+    #[test]
+    fn ignores_profile_noise_around_alias_output() {
+        assert_eq!(
+            parse(b"profile banner\n\0alias ll='ls -la'\n\0prompt text\n"),
+            Some("ls -la".into())
+        );
+    }
 }
