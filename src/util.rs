@@ -130,6 +130,20 @@ pub fn child_after(path: &Path, root: &Path, child: &str) -> Option<String> {
         .map(|component| component.as_os_str().to_string_lossy().into_owned())
 }
 
+pub fn first_two_components(path: &Path, root: &Path) -> Option<(String, Option<String>)> {
+    let relative = relative_to(path, root)?;
+    let mut components = relative.components();
+    let first = components
+        .next()?
+        .as_os_str()
+        .to_string_lossy()
+        .into_owned();
+    let second = components
+        .next()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned());
+    Some((first, second))
+}
+
 pub fn query_ownership(
     context: &DetectionContext<'_>,
     program: impl AsRef<OsStr>,

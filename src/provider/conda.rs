@@ -14,7 +14,7 @@ impl Provider for Conda {
 
 fn detect_path(path: &Path) -> Option<Detection> {
     let prefix = conda_prefix(path)?;
-    Some(Detection::inspection(
+    Some(Detection::environment_inspection(
         "Conda-compatible",
         environment_name(prefix),
         Confidence::High,
@@ -63,7 +63,8 @@ mod tests {
         let detection = detect_path(&prefix.join("bin/python")).unwrap();
 
         assert_eq!(detection.manager, "Conda-compatible");
-        assert_eq!(detection.package.as_deref(), Some("science"));
+        assert_eq!(detection.provenance.environment.as_deref(), Some("science"));
+        assert_eq!(detection.provenance.package, None);
         assert_eq!(detection.confidence, Confidence::High);
         fs::remove_dir_all(root).unwrap();
     }

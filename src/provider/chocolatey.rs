@@ -59,6 +59,6 @@ mod tests {
             Path::new("C:/tools/choco"),
         )
         .unwrap();
-        assert_eq!(detection.package.as_deref(), Some("ripgrep"));
+        assert_eq!(detection.provenance.package.as_deref(), Some("ripgrep"));
     }
 }

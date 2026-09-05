@@ -73,6 +73,6 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(detection.package.as_deref(), Some("@scope/tool"));
+        assert_eq!(detection.provenance.package.as_deref(), Some("@scope/tool"));
     }
 }

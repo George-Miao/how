@@ -1,22 +1,37 @@
 use std::cmp::Ordering;
 use std::ffi::OsStr;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use serde::{Serialize, Serializer};
 
 use crate::command_probe;
 use crate::error::Error;
-use crate::provider::{self, Confidence, Detection, DetectionContext, Evidence, Mechanism};
+use crate::provider::{
+    self, Confidence, Detection, DetectionContext, Evidence, Mechanism, Provenance,
+};
 use crate::resolver::{self, Resolution};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Installation {
+    #[serde(serialize_with = "serialize_path_lossy")]
     pub executable: PathBuf,
+    #[serde(serialize_with = "serialize_path_lossy")]
     pub resolved: PathBuf,
     pub manager: &'static str,
-    pub package: Option<String>,
+    #[serde(flatten)]
+    pub provenance: Provenance,
     pub confidence: Confidence,
     pub evidence: Vec<Evidence>,
+    #[serde(skip)]
     pub arbitration: Option<ArbitrationExplanation>,
+}
+
+fn serialize_path_lossy<S>(path: &Path, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&path.to_string_lossy())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,7 +43,7 @@ pub struct ArbitrationExplanation {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CandidateExplanation {
     pub manager: &'static str,
-    pub package: Option<String>,
+    pub provenance: Provenance,
     pub confidence: Confidence,
     pub phase: &'static str,
     pub mechanism: &'static str,
@@ -66,7 +81,7 @@ fn inspect_path(resolution: Resolution, explain: bool) -> Installation {
         candidates.push(Candidate::new(
             Detection {
                 manager: "unknown",
-                package: None,
+                provenance: Provenance::default(),
                 confidence: Confidence::Low,
                 mechanism: Mechanism::Inspection,
                 detail: "no known path convention or package database matched".into(),
@@ -110,7 +125,7 @@ fn inspect_path(resolution: Resolution, explain: bool) -> Installation {
         executable,
         resolved,
         manager: detection.manager,
-        package: detection.package,
+        provenance: detection.provenance,
         confidence: detection.confidence,
         evidence,
         arbitration,
@@ -252,7 +267,7 @@ impl CandidateSelection {
             &self.selected,
             format!(
                 "selected by confidence-first policy; stable priority {}, then phase, mechanism, \
-                 manager, package, and evidence break ties",
+                 manager, provenance, and evidence break ties",
                 self.selected.priority
             ),
         );
@@ -271,7 +286,7 @@ impl CandidateExplanation {
     fn new(candidate: &Candidate, reason: String) -> Self {
         Self {
             manager: candidate.detection.manager,
-            package: candidate.detection.package.clone(),
+            provenance: candidate.detection.provenance.clone(),
             confidence: candidate.detection.confidence,
             phase: candidate.phase.as_str(),
             mechanism: mechanism_name(candidate.detection.mechanism),
@@ -346,7 +361,7 @@ impl CandidateSelectionPolicy {
                     .cmp(&mechanism_rank(right.detection.mechanism))
             })
             .then_with(|| left.detection.manager.cmp(right.detection.manager))
-            .then_with(|| left.detection.package.cmp(&right.detection.package))
+            .then_with(|| left.detection.provenance.cmp(&right.detection.provenance))
             .then_with(|| left.detection.detail.cmp(&right.detection.detail))
     }
 }
@@ -461,7 +476,7 @@ mod tests {
         Candidate::new(
             Detection {
                 manager,
-                package: None,
+                provenance: Provenance::default(),
                 confidence,
                 mechanism: Mechanism::PathConvention,
                 detail: "test candidate".into(),

@@ -29,33 +29,27 @@ fn detect_path(path: &Path, configured: Option<&Path>) -> Option<Detection> {
     let index = components
         .iter()
         .position(|component| component == "Cellar")?;
-    Some(Detection::path(
+    Some(Detection::package_version_path(
         "Homebrew",
-        components.get(index + 1).cloned(),
+        components.get(index + 1)?.clone(),
+        components.get(index + 2).cloned(),
         Confidence::High,
         "target lives in a Homebrew Cellar",
     ))
 }
 
 fn detect_configured(path: &Path, cellar: &Path) -> Option<Detection> {
-    let formula = child(path, cellar)?;
-    Some(Detection::path(
+    let (formula, version) = util::first_two_components(path, cellar)?;
+    Some(Detection::package_version_path(
         "Homebrew",
-        Some(formula),
+        formula,
+        version,
         Confidence::High,
         format!(
             "target lives in configured Homebrew Cellar {}",
             cellar.display()
         ),
     ))
-}
-
-fn child(path: &Path, root: &Path) -> Option<String> {
-    path.strip_prefix(root)
-        .ok()?
-        .components()
-        .next()
-        .map(|value| value.as_os_str().to_string_lossy().into_owned())
 }
 
 #[cfg(test)]
@@ -69,6 +63,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(detection.package.as_deref(), Some("ripgrep"));
+        assert_eq!(detection.provenance.package.as_deref(), Some("ripgrep"));
+        assert_eq!(detection.provenance.version.as_deref(), Some("14.1.1"));
     }
 }
