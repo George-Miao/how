@@ -22,15 +22,31 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             extension: tar.gz
+            builder: cross
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            extension: tar.gz
+            builder: cross
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            extension: tar.gz
+            builder: cross
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            extension: tar.gz
+            builder: cross
           - os: macos-latest
             target: x86_64-apple-darwin
             extension: tar.gz
+            builder: cargo
           - os: macos-latest
             target: aarch64-apple-darwin
             extension: tar.gz
+            builder: cargo
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             extension: zip
+            builder: cargo
     env:
       ARCHIVE_NAME: how-${{ matrix.target }}.${{ matrix.extension }}
     steps:
@@ -42,8 +58,19 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install cross
+        if: matrix.builder == 'cross'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
       - name: Build release binary
+        if: matrix.builder == 'cargo'
         run: cargo build --locked --release --target ${{ matrix.target }}
+
+      - name: Cross-build release binary
+        if: matrix.builder == 'cross'
+        run: cross build --locked --release --target ${{ matrix.target }}
 
       - name: Package binary
         if: runner.os != 'Windows'

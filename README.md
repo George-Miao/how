@@ -39,9 +39,22 @@ Or install the default package from this repository with Nix:
 nix profile install github:George-Miao/how
 ```
 
-The flake supports `aarch64-darwin`, `aarch64-linux`, and `x86_64-linux`.
+The Nix flake supports `aarch64-darwin`, `aarch64-linux`, and `x86_64-linux`.
 
-To install manually, download the archive for your platform from the
+Prebuilt release archives, including those used by `cargo-binstall`, are
+available for these exact Rust targets:
+
+| Platform | Architecture | Target |
+| --- | --- | --- |
+| Linux (GNU) | x86-64 | `x86_64-unknown-linux-gnu` |
+| Linux (GNU) | ARM64 | `aarch64-unknown-linux-gnu` |
+| Linux (musl) | x86-64 | `x86_64-unknown-linux-musl` |
+| Linux (musl) | ARM64 | `aarch64-unknown-linux-musl` |
+| macOS | x86-64 | `x86_64-apple-darwin` |
+| macOS | ARM64 | `aarch64-apple-darwin` |
+| Windows (MSVC) | x86-64 | `x86_64-pc-windows-msvc` |
+
+To install manually, download the matching archive from the
 [latest GitHub release](https://github.com/George-Miao/how/releases/latest),
 verify it against `SHA256SUMS`, extract `how` (`how.exe` on Windows), and move
 the binary into a directory on your `PATH`.
