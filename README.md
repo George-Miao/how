@@ -14,7 +14,7 @@
 
 Path conventions are the primary signal. Windows app execution aliases are recognized too. For executables in system directories, `how` also asks an available package database (`dpkg`, RPM, pacman, apk, or FreeBSD pkg) which package owns the file.
 
-Configured installation roots are considered as well. Depending on the provider, `how` reads documented environment variables and configuration files or caches a read-only query such as `pnpm bin --global`, `go env`, `uv tool dir`, or `pipx environment`.
+Configured installation roots are considered as well. Depending on the provider, `how` reads documented environment variables and configuration files or caches a read-only query such as `rustup which`, `pnpm bin --global`, `go env`, `uv tool dir`, or `pipx environment`.
 
 Configured aliases from bash, zsh, fish, Nushell, PowerShell, and tcsh/csh are expanded before `PATH` is searched, including aliases that add arguments or point to another alias.
 
@@ -168,6 +168,7 @@ only to discover paths; `how` does not change package-manager configuration.
 | Bun | Cross-platform | `bin` beneath the Bun install root | `BUN_INSTALL` or default |
 | Deno | Cross-platform | `bin` beneath the Deno install root | `DENO_INSTALL_ROOT` or default |
 | Composer | Cross-platform | `vendor/bin` beneath Composer home | `COMPOSER_HOME` or default |
+| Rustup | Cross-platform | Direct toolchain `bin` paths or standard proxies verified with `rustup which`; `rustup` itself is verified with `rustup --version` | `RUSTUP_HOME`, `CARGO_HOME`, or defaults |
 | Cargo | Cross-platform | `bin` beneath the Cargo install root | `CARGO_INSTALL_ROOT`, `CARGO_HOME`, or `install.root` in Cargo config; otherwise default |
 | Go | Cross-platform | A Go install `bin` directory | `GOBIN`, `GOPATH`, `go env GOBIN`, `go env GOPATH`, or default |
 | MSYS2 pacman | Windows | MSYS/UCRT/CLANG/MinGW prefix layout; then `pacman -Qqo` when available | Root is inferred from the executable, including non-default drives and directories |
@@ -176,6 +177,10 @@ only to discover paths; `how` does not change package-manager configuration.
 | Chocolatey | Windows | Packages or shims beneath the Chocolatey root | `ChocolateyInstall`, `PROGRAMDATA`, or default |
 | Microsoft Store / App Installer | Windows | App execution alias in `Microsoft/WindowsApps` | Location derived from `LOCALAPPDATA` |
 | System fallback | Unix-like | `/usr/bin`, `/usr/sbin`, `/bin`, or `/sbin` | — (fixed prefixes; low-confidence fallback) |
+
+Rustup is checked before Cargo because both use `CARGO_HOME/bin`. Only `rustup`
+and the standard Rustup proxy names are queried and must verify successfully;
+other binaries in that directory remain Cargo-installed candidates.
 
 When no high-confidence path convention matches, `how` asks each available
 native package database about the exact resolved executable:

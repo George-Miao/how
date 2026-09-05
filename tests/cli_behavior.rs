@@ -86,6 +86,24 @@ fn run_how(path: impl IntoIterator<Item = impl AsRef<OsStr>>, args: &[&OsStr]) -
     command.output().expect("execute how binary")
 }
 
+fn run_how_with_env(path: &[&Path], environment: &[(&str, &OsStr)], args: &[&OsStr]) -> Output {
+    let path = std::env::join_paths(path).expect("fixture PATH is representable");
+    let mut command = Command::new(how_binary());
+    command.env_clear().env("PATH", path).args(args);
+    for (name, value) in environment {
+        command.env(name, value);
+    }
+
+    #[cfg(windows)]
+    for name in ["SystemRoot", "WINDIR"] {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+
+    command.output().expect("execute how binary")
+}
+
 fn assert_success(output: &Output) {
     assert!(
         output.status.success(),
@@ -388,4 +406,117 @@ fn detects_a_windows_scoop_path() {
     assert_eq!(json["installations"][0]["manager"], "Scoop");
     assert_eq!(json["installations"][0]["package"], "ripgrep");
     assert_eq!(json["installations"][0]["confidence"], "high");
+}
+
+#[test]
+fn detects_a_direct_binary_under_a_configured_rustup_home() {
+    let fs = TestFs::new();
+    let rustup_home = fs.root.join("custom-rustup");
+    let executable = fs.executable(
+        rustup_home
+            .join("toolchains/nightly-x86_64-unknown-linux-gnu/bin")
+            .join(fixture_name("rustc")),
+    );
+    let json = json_output(&run_how_with_env(
+        &[executable.parent().unwrap()],
+        &[("RUSTUP_HOME", rustup_home.as_os_str())],
+        &[OsStr::new("--json"), OsStr::new("rustc")],
+    ));
+
+    assert_eq!(json["installations"][0]["manager"], "Rustup");
+    assert_eq!(
+        json["installations"][0]["toolchain"],
+        "nightly-x86_64-unknown-linux-gnu"
+    );
+    assert_eq!(json["installations"][0]["package"], Value::Null);
+    assert_eq!(json["installations"][0]["confidence"], "high");
+}
+
+#[cfg(unix)]
+#[test]
+fn verifies_a_rustup_proxy_under_a_configured_cargo_home() {
+    let fs = TestFs::new();
+    let cargo_home = fs.root.join("custom-cargo");
+    let rustup_home = fs.root.join("custom-rustup");
+    let bin = cargo_home.join("bin");
+    fs.executable(bin.join("rustc"));
+    let selected = rustup_home.join("toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc");
+    fs.script(
+        bin.join("rustup"),
+        &format!(
+            "#!/bin/sh\n[ \"$1\" = which ] && [ \"$2\" = rustc ] || exit 2\nprintf '%s\\n' '{}'\n",
+            selected.display()
+        ),
+    );
+    let json = json_output(&run_how_with_env(
+        &[&bin],
+        &[
+            ("CARGO_HOME", cargo_home.as_os_str()),
+            ("RUSTUP_HOME", rustup_home.as_os_str()),
+        ],
+        &[OsStr::new("--json"), OsStr::new("rustc")],
+    ));
+
+    assert_eq!(json["installations"][0]["manager"], "Rustup");
+    assert_eq!(
+        json["installations"][0]["toolchain"],
+        "stable-x86_64-unknown-linux-gnu"
+    );
+    assert_eq!(json["installations"][0]["confidence"], "high");
+}
+
+#[cfg(unix)]
+#[test]
+fn verifies_the_rustup_executable_under_cargo_home() {
+    let fs = TestFs::new();
+    let cargo_home = fs.root.join("custom-cargo");
+    let rustup_home = fs.root.join("custom-rustup");
+    let bin = cargo_home.join("bin");
+    fs.script(
+        bin.join("rustup"),
+        "#!/bin/sh\n[ \"$1\" = --version ] || exit 2\nprintf '%s\\n' 'rustup 1.28.2 (e4f3ad6f8 \
+         2025-04-28)'\n",
+    );
+    let json = json_output(&run_how_with_env(
+        &[&bin],
+        &[
+            ("CARGO_HOME", cargo_home.as_os_str()),
+            ("RUSTUP_HOME", rustup_home.as_os_str()),
+        ],
+        &[OsStr::new("--json"), OsStr::new("rustup")],
+    ));
+
+    assert_eq!(json["installations"][0]["manager"], "Rustup");
+    assert_eq!(json["installations"][0]["toolchain"], Value::Null);
+    assert_eq!(json["installations"][0]["confidence"], "high");
+}
+
+#[cfg(unix)]
+#[test]
+fn leaves_an_arbitrary_cargo_installed_binary_with_cargo() {
+    let fs = TestFs::new();
+    let cargo_home = fs.root.join("custom-cargo");
+    let rustup_home = fs.root.join("custom-rustup");
+    let bin = cargo_home.join("bin");
+    fs.executable(bin.join("ripgrep"));
+    let marker = fs.root.join("rustup-was-called");
+    fs.script(
+        bin.join("rustup"),
+        &format!("#!/bin/sh\ntouch '{}'\nexit 1\n", marker.display()),
+    );
+    let json = json_output(&run_how_with_env(
+        &[&bin],
+        &[
+            ("CARGO_HOME", cargo_home.as_os_str()),
+            ("RUSTUP_HOME", rustup_home.as_os_str()),
+        ],
+        &[OsStr::new("--json"), OsStr::new("ripgrep")],
+    ));
+
+    assert_eq!(json["installations"][0]["manager"], "Cargo");
+    assert_eq!(json["installations"][0]["package"], "ripgrep");
+    assert!(
+        !marker.exists(),
+        "unrecognized binaries must not invoke rustup"
+    );
 }
