@@ -75,6 +75,20 @@ Produce stable, machine-readable output:
 how --json rg
 ```
 
+Explain how matching candidates were ranked:
+
+```console
+how --explain rg
+```
+
+The explanation names the selected candidate, every rejected candidate that was
+safely considered, and the selection reason. Candidates are ranked by
+confidence, explicit provider priority, then deterministic phase and candidate
+tie-breaks. Dynamic and package-database probes remain lazy: probing stops once
+later candidates cannot outrank the current result. `--explain` and `--json`
+currently conflict because the stable JSON schema does not include arbitration
+details.
+
 ## Supported detection
 
 Every path provider checks both the executable found on `PATH` and its resolved

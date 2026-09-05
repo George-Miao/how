@@ -6,7 +6,7 @@ use clap::{ColorChoice, Parser};
 use owo_colors::Stream::Stdout;
 use owo_colors::{OwoColorize, Style};
 
-use crate::detect::{self, Installation};
+use crate::detect::{self, CandidateExplanation, Installation};
 use crate::error::Error;
 
 const CLAP_STYLES: styling::Styles = styling::Styles::styled()
@@ -22,7 +22,7 @@ const CLAP_STYLES: styling::Styles = styling::Styles::styled()
     color = ColorChoice::Auto,
     styles = CLAP_STYLES,
     about = "How was a command installed?",
-    after_help = "Examples:\n  how rg\n  how --all python\n  how --json /opt/homebrew/bin/rg"
+    after_help = "Examples:\n  how rg\n  how --all python\n  how --explain rg\n  how --json /opt/homebrew/bin/rg"
 )]
 struct Cli {
     /// Inspect every matching executable in PATH
@@ -32,6 +32,9 @@ struct Cli {
     /// Print machine-readable JSON
     #[arg(long)]
     json: bool,
+    /// Explain candidate selection
+    #[arg(long, conflicts_with = "json")]
+    explain: bool,
 
     /// Command name or executable path to inspect
     #[arg(value_name = "COMMAND")]
@@ -40,16 +43,16 @@ struct Cli {
 
 pub fn run() -> Result<(), Error> {
     let options = Cli::parse();
-    let installations = detect::inspect(&options.command, options.all)?;
+    let installations = detect::inspect(&options.command, options.all, options.explain)?;
     if options.json {
         println!("{}", render_json(&installations));
     } else {
-        print!("{}", render_human(&installations));
+        print!("{}", render_human(&installations, options.explain));
     }
     Ok(())
 }
 
-fn render_human(installations: &[Installation]) -> String {
+fn render_human(installations: &[Installation], explain: bool) -> String {
     let mut output = String::new();
     for (index, installation) in installations.iter().enumerate() {
         if index > 0 {
@@ -119,8 +122,35 @@ fn render_human(installations: &[Installation]) -> String {
                     .if_supports_color(Stdout, |detail| detail.dimmed())
             );
         }
+        if explain && let Some(arbitration) = &installation.arbitration {
+            let _ = writeln!(
+                output,
+                "  {}",
+                "arbitration".if_supports_color(Stdout, |label| label.bold())
+            );
+            render_candidate(&mut output, "selected", &arbitration.selected);
+            for rejected in &arbitration.rejected {
+                render_candidate(&mut output, "rejected", rejected);
+            }
+        }
     }
     output
+}
+
+fn render_candidate(output: &mut String, disposition: &str, candidate: &CandidateExplanation) {
+    let _ = writeln!(
+        output,
+        "    {disposition} {} ({}; {}; {})",
+        candidate.manager,
+        candidate.confidence.as_str(),
+        candidate.phase,
+        candidate.mechanism
+    );
+    if let Some(package) = &candidate.package {
+        let _ = writeln!(output, "      package: {package}");
+    }
+    let _ = writeln!(output, "      evidence: {}", candidate.detail);
+    let _ = writeln!(output, "      reason: {}", candidate.reason);
 }
 
 fn render_json(installations: &[Installation]) -> String {
@@ -195,8 +225,19 @@ mod tests {
                 command: OsString::from("rg"),
                 all: true,
                 json: true,
+                explain: false,
             }
         );
+    }
+    #[test]
+    fn clap_rejects_explain_with_json() {
+        let error = Cli::try_parse_from(["how", "--explain", "--json", "rg"])
+            .expect_err("options conflict");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+        let message = error.to_string();
+        assert!(message.contains("--explain"), "{message}");
+        assert!(message.contains("--json"), "{message}");
     }
 
     #[test]
@@ -207,6 +248,47 @@ mod tests {
             .ansi()
             .to_string();
         assert!(help.contains("\u{1b}["));
+    }
+    #[test]
+    fn explain_output_lists_selected_and_rejected_candidates() {
+        let installation = Installation {
+            executable: PathBuf::from("/nix/store/abc-ripgrep/bin/rg"),
+            resolved: PathBuf::from("/nix/store/abc-ripgrep/bin/rg"),
+            manager: "Nix",
+            package: Some("ripgrep".into()),
+            confidence: Confidence::High,
+            evidence: vec![Evidence {
+                kind: "path convention",
+                detail: "target lives in /nix/store".into(),
+            }],
+            arbitration: Some(crate::detect::ArbitrationExplanation {
+                selected: CandidateExplanation {
+                    manager: "Nix",
+                    package: Some("ripgrep".into()),
+                    confidence: Confidence::High,
+                    phase: "cheap path",
+                    mechanism: "path convention",
+                    detail: "target lives in /nix/store".into(),
+                    reason: "selected by confidence-first policy".into(),
+                },
+                rejected: vec![CandidateExplanation {
+                    manager: "Cargo",
+                    package: Some("rg".into()),
+                    confidence: Confidence::Medium,
+                    phase: "cheap path",
+                    mechanism: "path convention",
+                    detail: "executable is in Cargo install root".into(),
+                    reason: "lower confidence than selected Nix".into(),
+                }],
+            }),
+        };
+
+        let output = render_human(std::slice::from_ref(&installation), true);
+        assert!(output.contains("arbitration"), "{output}");
+        assert!(output.contains("selected Nix"), "{output}");
+        assert!(output.contains("rejected Cargo"), "{output}");
+        assert!(output.contains("lower confidence"), "{output}");
+        assert!(!render_human(&[installation], false).contains("arbitration"));
     }
 
     #[test]
@@ -221,6 +303,7 @@ mod tests {
                 kind: "path convention",
                 detail: "line\none".into(),
             }],
+            arbitration: None,
         };
 
         let json = render_json(&[installation]);
