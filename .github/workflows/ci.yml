@@ -46,6 +46,19 @@ jobs:
       - name: Clippy
         run: cargo +stable clippy --locked --all-targets -- -D warnings
 
+  msrv:
+    name: Rust 1.95 MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Check
+        run: cargo +1.95.0 check --locked --all-targets
+
   format:
     name: Rustfmt
     runs-on: ubuntu-latest
@@ -60,3 +73,13 @@ jobs:
 
       - name: Rustfmt
         run: cargo +nightly fmt --all -- --check
+
+  workflows:
+    name: Validate workflows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Run actionlint
+        uses: raven-actions/actionlint@v2

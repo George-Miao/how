@@ -5,7 +5,6 @@ edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
 description = "How was a command installed?"
-homepage = "https://github.com/George-Miao/how"
 repository = "https://github.com/George-Miao/how"
 
 [package.metadata.binstall]
